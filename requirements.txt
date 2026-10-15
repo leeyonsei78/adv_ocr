@@ -1,0 +1,16 @@
+# 핵심
+python-pptx>=0.6.23
+python-docx>=1.1
+PyMuPDF>=1.24
+Pillow>=10
+opencv-python-headless>=4.8
+numpy>=1.24
+PyYAML>=6
+pytesseract>=0.3.10
+olefile>=0.46
+openpyxl>=3.1
+
+# 선택: PaddleOCR (이 PoC 에서 검증한 버전. 모델 파일은 별도 반입 필요)
+# paddlepaddle==3.3.1
+# paddleocr==3.7.0
+# paddlex==3.7.2   (paddleocr 설치 시 함께 설치됨)

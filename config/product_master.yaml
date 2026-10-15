@@ -1,0 +1,79 @@
+# ============================================================
+# 상품 마스터 (예시 / PoC용)
+# ------------------------------------------------------------
+# 약관·기초서류에서 확인된 "확정 수치"를 구조화해 둔 파일입니다.
+# 광고 속 숫자(보장금액, 가입연령, 납입기간, 면책기간 등)가
+# 여기 값과 일치하는지 대조합니다.
+#
+# !! 아래 값은 모두 가상의 예시입니다. 실제 상품 데이터로 교체하세요. !!
+# ============================================================
+
+products:
+  - product_id: DEMO-CANCER-01
+    name: "(예시)든든암보험"
+    keywords: ["든든암", "든든 암"]          # 광고에서 상품을 식별할 키워드
+    product_type: [renewable]
+    facts:
+      - key: 가입연령
+        aliases: ["가입연령", "가입가능", "가입나이", "나이"]
+        description: "가입 가능 연령"
+        min: 20
+        max: 65
+        unit: 세
+      - key: 보험기간
+        aliases: ["보험기간", "만기"]
+        description: "보험기간"
+        allowed: [10, 20]
+        unit: 년
+      - key: 납입기간
+        aliases: ["납입", "납"]
+        description: "보험료 납입기간"
+        allowed: [10, 20]
+        unit: 년
+      - key: 암진단비
+        aliases: ["진단비", "진단금", "암진단", "진단시", "일반암", "암보장"]
+        description: "암 진단 시 지급 보험금 (일반암)"
+        allowed: [3000, 5000]
+        unit: 만원
+      - key: 소액암진단비
+        aliases: ["소액암", "갑상선", "기타피부암", "제자리암"]
+        description: "소액암(갑상선암 등) 진단비"
+        allowed: [600, 1000]
+        unit: 만원
+      - key: 면책기간
+        aliases: ["면책", "보장개시", "보장 개시"]
+        description: "암 보장 면책기간(90일)"
+        allowed: [90]
+        unit: 일
+      - key: 감액기간
+        aliases: ["감액", "50%"]
+        description: "보험금 50% 감액 지급 기간"
+        allowed: [1]
+        unit: 년
+
+  - product_id: DEMO-SAVING-01
+    name: "(예시)차곡차곡저축보험"
+    keywords: ["차곡차곡"]
+    product_type: [savings]
+    facts:
+      - key: 가입연령
+        aliases: ["가입연령", "가입가능", "가입나이", "나이"]
+        description: "가입 가능 연령"
+        min: 0
+        max: 70
+        unit: 세
+      - key: 납입기간
+        aliases: ["납입", "납"]
+        description: "보험료 납입기간"
+        allowed: [5, 7, 10]
+        unit: 년
+      - key: 공시이율
+        aliases: ["공시이율", "이율", "이자"]
+        description: "공시이율 (변동, 예시)"
+        max: 3.0
+        unit: "%"
+      - key: 최저보증이율
+        aliases: ["최저보증", "보증이율"]
+        description: "최저보증이율"
+        allowed: [1.0]
+        unit: "%"

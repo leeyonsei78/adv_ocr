@@ -1,0 +1,621 @@
+{
+ "ground_truth": [
+  [
+   "BAN-001",
+   "최고"
+  ],
+  [
+   "BAN-001",
+   "최대"
+  ],
+  [
+   "BAN-002",
+   "100%"
+  ],
+  [
+   "BAN-002",
+   "무조건"
+  ],
+  [
+   "BAN-005",
+   "타사보다"
+  ],
+  [
+   "BAN-006",
+   "지금바로가입"
+  ],
+  [
+   "BAN-007",
+   "저렴"
+  ],
+  [
+   "NUM-가입연령",
+   ""
+  ],
+  [
+   "NUM-암진단비",
+   ""
+  ],
+  [
+   "REQ-001",
+   ""
+  ]
+ ],
+ "results": {
+  "ad_cancer_bad.png": {
+   "tesseract": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 4.8,
+    "phrase_recall": 1.0,
+    "char_cov": 0.9864864864864865,
+    "TP": 10,
+    "FN": [],
+    "FP": [],
+    "ocr_warn": 0,
+    "n_blocks": 27
+   },
+   "paddle": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 2.4,
+    "phrase_recall": 1.0,
+    "char_cov": 1.0,
+    "TP": 10,
+    "FN": [],
+    "FP": [],
+    "ocr_warn": 0,
+    "n_blocks": 8
+   }
+  },
+  "01_jpeg_q15.jpg": {
+   "tesseract": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [
+     [
+      "11000만원",
+      84
+     ],
+     [
+      "1.000만원",
+      79
+     ]
+    ],
+    "time": 5.7,
+    "phrase_recall": 0.9090909090909091,
+    "char_cov": 0.9324324324324325,
+    "TP": 10,
+    "FN": [],
+    "FP": [
+     [
+      "NUM-UNMATCHED-MONEY",
+      ""
+     ],
+     [
+      "NUM-소액암진단비",
+      ""
+     ]
+    ],
+    "ocr_warn": 0,
+    "n_blocks": 25
+   },
+   "paddle": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 2.0,
+    "phrase_recall": 0.9090909090909091,
+    "char_cov": 0.972972972972973,
+    "TP": 10,
+    "FN": [],
+    "FP": [],
+    "ocr_warn": 0,
+    "n_blocks": 8
+   }
+  },
+  "02_lowres_0.6x.png": {
+   "tesseract": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 2,
+    "wrong_num_detail": [
+     [
+      "1.000만원",
+      88
+     ],
+     [
+      "1.000만원",
+      89
+     ]
+    ],
+    "time": 4.5,
+    "phrase_recall": 0.9090909090909091,
+    "char_cov": 0.9324324324324325,
+    "TP": 10,
+    "FN": [],
+    "FP": [
+     [
+      "NUM-UNMATCHED-MONEY",
+      ""
+     ],
+     [
+      "REQ-004",
+      ""
+     ]
+    ],
+    "ocr_warn": 0,
+    "n_blocks": 22
+   },
+   "paddle": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 1.0,
+    "phrase_recall": 1.0,
+    "char_cov": 0.9932432432432432,
+    "TP": 10,
+    "FN": [],
+    "FP": [],
+    "ocr_warn": 0,
+    "n_blocks": 8
+   }
+  },
+  "03_lowres_0.4x.png": {
+   "tesseract": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 2,
+    "wrong_num_detail": [
+     [
+      "1.000만원",
+      89
+     ],
+     [
+      "1.000만원",
+      89
+     ]
+    ],
+    "time": 4.0,
+    "phrase_recall": 0.8181818181818182,
+    "char_cov": 0.7972972972972973,
+    "TP": 10,
+    "FN": [],
+    "FP": [
+     [
+      "NUM-UNMATCHED-MONEY",
+      ""
+     ],
+     [
+      "REQ-003",
+      ""
+     ],
+     [
+      "REQ-004",
+      ""
+     ]
+    ],
+    "ocr_warn": 0,
+    "n_blocks": 24
+   },
+   "paddle": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 0.8,
+    "phrase_recall": 0.8181818181818182,
+    "char_cov": 0.8986486486486487,
+    "TP": 10,
+    "FN": [],
+    "FP": [
+     [
+      "REQ-003",
+      ""
+     ],
+     [
+      "REQ-004",
+      ""
+     ]
+    ],
+    "ocr_warn": 0,
+    "n_blocks": 8
+   }
+  },
+  "04_blur_s2.png": {
+   "tesseract": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 2,
+    "wrong_num_detail": [
+     [
+      "1000만원",
+      86
+     ],
+     [
+      "1009%",
+      89
+     ]
+    ],
+    "time": 5.3,
+    "phrase_recall": 0.8181818181818182,
+    "char_cov": 0.6554054054054054,
+    "TP": 10,
+    "FN": [],
+    "FP": [
+     [
+      "REQ-003",
+      ""
+     ],
+     [
+      "REQ-004",
+      ""
+     ]
+    ],
+    "ocr_warn": 0,
+    "n_blocks": 21
+   },
+   "paddle": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 2.2,
+    "phrase_recall": 0.9090909090909091,
+    "char_cov": 0.9527027027027027,
+    "TP": 10,
+    "FN": [],
+    "FP": [
+     [
+      "REQ-004",
+      ""
+     ]
+    ],
+    "ocr_warn": 0,
+    "n_blocks": 12
+   }
+  },
+  "05_noise_s30.png": {
+   "tesseract": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 1,
+    "wrong_num_detail": [
+     [
+      "1.000만원",
+      85
+     ]
+    ],
+    "time": 91.6,
+    "phrase_recall": 0.8181818181818182,
+    "char_cov": 0.7297297297297297,
+    "TP": 10,
+    "FN": [],
+    "FP": [
+     [
+      "NUM-UNMATCHED-MONEY",
+      ""
+     ],
+     [
+      "REQ-003",
+      ""
+     ],
+     [
+      "REQ-004",
+      ""
+     ]
+    ],
+    "ocr_warn": 0,
+    "n_blocks": 25
+   },
+   "paddle": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 1.9,
+    "phrase_recall": 0.9090909090909091,
+    "char_cov": 0.9797297297297297,
+    "TP": 9,
+    "FN": [
+     [
+      "BAN-007",
+      "저렴"
+     ]
+    ],
+    "FP": [],
+    "ocr_warn": 0,
+    "n_blocks": 8
+   }
+  },
+  "06_skew_5deg.png": {
+   "tesseract": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 1,
+    "wrong_num_detail": [
+     [
+      "1.000만원",
+      91
+     ],
+     [
+      "26년",
+      68
+     ]
+    ],
+    "time": 5.3,
+    "phrase_recall": 0.8181818181818182,
+    "char_cov": 0.8108108108108109,
+    "TP": 10,
+    "FN": [],
+    "FP": [
+     [
+      "NUM-보험기간",
+      ""
+     ],
+     [
+      "REQ-003",
+      ""
+     ]
+    ],
+    "ocr_warn": 0,
+    "n_blocks": 30
+   },
+   "paddle": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 2.1,
+    "phrase_recall": 1.0,
+    "char_cov": 1.0,
+    "TP": 10,
+    "FN": [],
+    "FP": [],
+    "ocr_warn": 0,
+    "n_blocks": 8
+   }
+  },
+  "07_low_contrast.png": {
+   "tesseract": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 5.2,
+    "phrase_recall": 1.0,
+    "char_cov": 0.9864864864864865,
+    "TP": 10,
+    "FN": [],
+    "FP": [],
+    "ocr_warn": 0,
+    "n_blocks": 26
+   },
+   "paddle": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 2.0,
+    "phrase_recall": 0.9090909090909091,
+    "char_cov": 1.0,
+    "TP": 10,
+    "FN": [],
+    "FP": [],
+    "ocr_warn": 0,
+    "n_blocks": 13
+   }
+  },
+  "08_busy_background.png": {
+   "tesseract": {
+    "num_ok": 4,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [
+     [
+      "65000만원",
+      74
+     ],
+     [
+      "0세",
+      74
+     ],
+     [
+      "2070세",
+      76
+     ],
+     [
+      "65000만원",
+      60
+     ]
+    ],
+    "time": 7.3,
+    "phrase_recall": 0.36363636363636365,
+    "char_cov": 0.5608108108108109,
+    "TP": 7,
+    "FN": [
+     [
+      "BAN-005",
+      "타사보다"
+     ],
+     [
+      "BAN-006",
+      "지금바로가입"
+     ],
+     [
+      "NUM-가입연령",
+      ""
+     ]
+    ],
+    "FP": [
+     [
+      "NUM-UNMATCHED-MONEY",
+      ""
+     ],
+     [
+      "NUM-소액암진단비",
+      ""
+     ],
+     [
+      "REQ-006",
+      ""
+     ]
+    ],
+    "ocr_warn": 6,
+    "n_blocks": 36
+   },
+   "paddle": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 1.7,
+    "phrase_recall": 0.9090909090909091,
+    "char_cov": 1.0,
+    "TP": 10,
+    "FN": [],
+    "FP": [],
+    "ocr_warn": 0,
+    "n_blocks": 9
+   }
+  },
+  "09_combo_phone.jpg": {
+   "tesseract": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [
+     [
+      "1000만원",
+      83
+     ]
+    ],
+    "time": 4.9,
+    "phrase_recall": 0.8181818181818182,
+    "char_cov": 0.6756756756756757,
+    "TP": 10,
+    "FN": [],
+    "FP": [
+     [
+      "REQ-003",
+      ""
+     ],
+     [
+      "REQ-004",
+      ""
+     ]
+    ],
+    "ocr_warn": 0,
+    "n_blocks": 21
+   },
+   "paddle": {
+    "num_ok": 7,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 0.8,
+    "phrase_recall": 0.8181818181818182,
+    "char_cov": 0.6891891891891891,
+    "TP": 10,
+    "FN": [],
+    "FP": [
+     [
+      "REQ-003",
+      ""
+     ],
+     [
+      "REQ-004",
+      ""
+     ]
+    ],
+    "ocr_warn": 0,
+    "n_blocks": 6
+   }
+  },
+  "10_combo_worst.jpg": {
+   "tesseract": {
+    "num_ok": 3,
+    "num_total": 7,
+    "confident_wrong_num": 2,
+    "wrong_num_detail": [
+     [
+      "7.000만원",
+      90
+     ],
+     [
+      "70년",
+      58
+     ],
+     [
+      "70년",
+      58
+     ],
+     [
+      "7.000만원",
+      89
+     ]
+    ],
+    "time": 6.5,
+    "phrase_recall": 0.45454545454545453,
+    "char_cov": 0.527027027027027,
+    "TP": 8,
+    "FN": [
+     [
+      "BAN-006",
+      "지금바로가입"
+     ],
+     [
+      "NUM-가입연령",
+      ""
+     ]
+    ],
+    "FP": [
+     [
+      "REQ-003",
+      ""
+     ],
+     [
+      "REQ-004",
+      ""
+     ],
+     [
+      "REQ-006",
+      ""
+     ]
+    ],
+    "ocr_warn": 6,
+    "n_blocks": 24
+   },
+   "paddle": {
+    "num_ok": 6,
+    "num_total": 7,
+    "confident_wrong_num": 0,
+    "wrong_num_detail": [],
+    "time": 0.7,
+    "phrase_recall": 0.7272727272727273,
+    "char_cov": 0.6824324324324325,
+    "TP": 10,
+    "FN": [],
+    "FP": [
+     [
+      "REQ-003",
+      ""
+     ],
+     [
+      "REQ-004",
+      ""
+     ]
+    ],
+    "ocr_warn": 0,
+    "n_blocks": 6
+   }
+  }
+ }
+}

@@ -1,0 +1,132 @@
+# ============================================================
+# 광고 점검 룰 (예시 / PoC용)
+# ------------------------------------------------------------
+# !! 아래 항목은 구조를 보여주기 위한 "예시"입니다. !!
+# 실제 운영 시에는 사내 광고심의 규정·약관·관련 법령을 근거로
+# 준법감시/심의 담당자가 항목을 직접 작성·검수해야 합니다.
+# 각 룰의 `basis`에는 근거 규정명·조항을 반드시 적어 두세요.
+# ============================================================
+
+# ---------- 1) 필수 문구 ----------
+# any_of  : 이 중 하나라도 있으면 충족 (정규식, 공백 무시 매칭)
+# all_of  : 모두 있어야 충족
+# applies_to : 적용 상품군 (비워두면 전체). 상품 지정은 CLI --product-type 으로 입력
+required_phrases:
+  - id: REQ-001
+    name: 심의필 번호 표기
+    any_of:
+      - "심의\\s*(필|번호|확인)"
+      - "준법감시인\\s*(심의|확인)"
+    fuzzy: ["심의필", "준법감시인"]
+    severity: high
+    basis: "(예시) 광고심의 규정 제○조 - 심의필 번호 표기"
+
+  - id: REQ-002
+    name: 예금자보호 관련 안내
+    any_of:
+      - "예금자\\s*보호"
+    fuzzy: ["예금자보호"]
+    applies_to: [savings, annuity, whole_life]
+    severity: high
+    basis: "(예시) 광고심의 규정 제○조 - 예금자보호 안내"
+
+  - id: REQ-003
+    name: 약관·상품설명서 확인 안내
+    any_of:
+      - "약관"
+      - "상품\\s*설명서"
+    severity: medium
+    basis: "(예시) 광고심의 규정 제○조 - 약관 등 확인 권유"
+
+  - id: REQ-004
+    name: 갱신형 보험료 인상 가능 안내
+    any_of:
+      - "갱신\\s*(시|할\\s*때|후).{0,12}(인상|오를|증가|변경)"
+      - "보험료.{0,10}(인상|오를|증가).{0,10}(수\\s*있)"
+    applies_to: [renewable]
+    severity: high
+    basis: "(예시) 광고심의 규정 제○조 - 갱신형 유의사항"
+
+  - id: REQ-005
+    name: 해지환급금 관련 안내
+    any_of:
+      - "해지\\s*환급금"
+      - "환급금.{0,12}(적거나|없을|원금.{0,6}(미달|손실))"
+    applies_to: [savings, annuity, whole_life]
+    severity: high
+    basis: "(예시) 광고심의 규정 제○조 - 해지환급금 안내"
+
+  - id: REQ-006
+    name: 보험금 지급 제한(면책·감액) 안내
+    any_of:
+      - "면책"
+      - "감액"
+      - "지급\\s*(이\\s*)?(제한|거절|되지\\s*않)"
+    severity: medium
+    basis: "(예시) 광고심의 규정 제○조 - 보장 제한 사항 안내"
+
+# ---------- 2) 금지·주의 표현 ----------
+# pattern  : 정규식 (OCR 공백 오류를 고려해 코드에서 공백을 제거한 텍스트로도 검사)
+# category : exaggeration(과장) / absolute(단정) / comparison(비교) / guarantee(보장·확정) / urgency(조급)
+# note     : 담당자에게 보여줄 설명
+prohibited_expressions:
+  - id: BAN-001
+    category: exaggeration
+    pattern: "(최고|최대|최저|최상|최초|1위|일등|넘버\\s*원|No\\.?\\s*1)"
+    exceptions: ["최저\\s*보증", "최고\\s*보증", "최대\\s*(가입|납입)", "최저\\s*가입"]   # 약관상 정식 용어는 제외
+    note: "최상급·순위 표현 - 객관적 근거(출처·기준일) 병기 여부 확인"
+    severity: high
+  - id: BAN-002
+    category: absolute
+    pattern: "(100\\s*%|백\\s*%|무조건|반드시\\s*(받|지급|환급)|누구나|항상|절대|완벽)"
+    note: "단정적·절대적 표현"
+    severity: high
+  - id: BAN-003
+    category: guarantee
+    pattern: "(원금\\s*보장|원금\\s*보전|손실\\s*(없|0)|확정\\s*(수익|금리|이율|이자)|확정\\s*\\d+(\\.\\d+)?\\s*%|보장\\s*수익)"
+    note: "원금·수익 보장 오인 소지"
+    severity: high
+  - id: BAN-004
+    category: exaggeration
+    pattern: "(전액|모든|모두)\\s*(보장|지급|환급|보상)"
+    note: "보장범위 과장 소지 - 약관상 제한(면책·감액·한도)과 일치 여부 확인"
+    severity: high
+  - id: BAN-005
+    category: comparison
+    pattern: "(타사|다른\\s*(보험)?사|경쟁사).{0,10}(보다|대비|비해)"
+    note: "타사 비교 표현"
+    severity: high
+  - id: BAN-006
+    category: urgency
+    pattern: "(마감\\s*임박|오늘만|선착순|지금\\s*(바로\\s*)?(가입|신청)|놓치(면|지)\\s*마)"
+    note: "조급·충동 유발 표현"
+    severity: medium
+  - id: BAN-007
+    category: exaggeration
+    pattern: "(저렴|싼|파격|획기적|혁신적|역대급|초특가)"
+    note: "비교 기준이 불명확한 주관적 강조 표현"
+    severity: medium
+  - id: BAN-008
+    category: guarantee
+    pattern: "(0\\s*원|무료).{0,6}(보험료|가입|보장)"
+    note: "비용 부담 없음 오인 소지 - 조건 병기 여부 확인"
+    severity: medium
+
+# ---------- 3) 수치 대조 ----------
+numeric_check:
+  # 광고 문구에서 수치를 뽑을 때 사용할 단위 패턴
+  # (코드에서 만원/억원/세/년/% 등을 자동 정규화)
+  enabled: true
+  # 마스터에 없는 수치(예: 보장금액)가 광고에 등장하면 '검토 필요'로 표시할지
+  flag_unmatched_money: true
+
+# ---------- 4) 시각 점검 (OCR bbox 기반) ----------
+visual_check:
+  enabled: true
+  # 단서/유의 문구(작은 글씨)가 본문 최대 글자 높이 대비 이 비율 미만이면 의심
+  # (실제 기준은 사내 규정의 글자 크기 규정에 맞춰 수정)
+  min_disclaimer_height_ratio: 0.12
+  # PPT 네이티브 텍스트의 최소 글자 크기(pt) — 예시값. 사내 규정에 맞게 수정하거나 이 줄을 삭제
+  min_disclaimer_pt: 7
+  # 유의·단서 문구를 식별하는 키워드
+  disclaimer_keywords: ["유의", "단,", "※", "*", "약관", "심의", "예금자", "환급금", "면책", "감액"]

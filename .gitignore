@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+_work/
+.pytest_cache/
+output/run*/

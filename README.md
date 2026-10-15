@@ -1,0 +1,139 @@
+# 보험 광고물 1차 점검 PoC (폐쇄망용, LLM 미사용)
+
+광고 이미지 / PPTX / PDF 에서 OCR 로 문구를 뽑아 **필수 문구 누락 · 과장(금지) 표현 · 수치 불일치 · 작은 글씨**를
+룰 기반으로 점검하고, 관련 규정 조항을 검색해 함께 보여주는 도구입니다.
+**위반을 "확정"하지 않고 "검토 필요 항목"을 뽑아 심의 담당자를 돕는 용도**입니다.
+
+## 구성
+```
+adreview/
+  ocr.py        OCR 엔진 (Tesseract 기본 / PaddleOCR 권장)
+  extract.py    이미지·PPTX·PDF → 페이지별 텍스트 블록 (PPT 는 네이티브 텍스트 + 삽입 이미지 OCR + 슬라이드 렌더링 OCR)
+  reference.py  기준 문서(HWP/HWPX/DOCX/PDF/TXT) → 조항 색인 → 관련 조항 검색(BM25)
+  checks.py     점검 로직
+  report.py     HTML(위치 표시 이미지 포함) / JSON / XLSX 출력
+config/
+  rules.yaml           필수 문구·금지 표현·시각 점검 룰   ← 담당자가 관리 (현재 값은 '예시')
+  product_master.yaml  상품별 확정 수치(보장금액·연령·기간 등) ← 약관·기초서류 기준으로 입력 (현재 값은 '가상 예시')
+tests/   단위 테스트(test_core.py), 샘플 생성(make_samples.py)
+```
+
+## 사용법
+```bash
+# 1) 기준 문서 색인 (규정이 바뀔 때만 다시 실행). reference_docs/ 에 hwp, docx, pdf 를 넣는다.
+python -m adreview build-reference reference_docs/ --out output/ref_index.json
+
+# 2) 광고물 점검 (이미지, pptx, pdf 여러 개 가능)
+python -m adreview check ad1.pptx ad2.png \
+    --reference-index output/ref_index.json \
+    --product DEMO-CANCER-01 --product-type renewable \
+    --out output/run1
+#  → output/run1/report.html (위치 표시 포함), result.xlsx (담당자 판단 입력 열 포함), result.json
+
+# OCR 결과만 확인 (인식이 안 될 때 원인 파악용)
+python -m adreview ocr ad.png
+```
+- `--product` 를 생략하면 광고 문구에서 상품 마스터의 `keywords` 로 자동 식별합니다.
+- `--product-type` (예: `renewable,savings`) 으로 상품군을 주면 해당 상품군에만 적용되는 필수 문구(예금자보호 등)를 점검합니다.
+  상품군을 알 수 없으면 해당 룰은 '낮음' 중요도로 "상품군 미지정" 표시와 함께 나옵니다.
+
+## 점검 항목과 동작 방식
+| 유형 | 방식 | 비고 |
+|---|---|---|
+| 필수 문구 | 파일(PPT 전체) 단위로 정규식 검색, 없으면 유사 문구(OCR 오인식) 탐색 후 '누락 의심' | 심의필이 마지막 슬라이드에만 있어도 인정 |
+| 금지·과장 표현 | 공백 제거 텍스트에서 정규식 (OCR 공백 오류에 강함) + 예외 표현 | `rules.yaml` 의 `exceptions` 로 정식 용어(최저보증이율 등) 제외 |
+| 수치 불일치 | 광고 속 금액(억/천만/만원)·나이·기간·%·일수를 뽑아 **같은 줄의 항목명**으로 마스터 항목에 매칭 후 대조 | 마스터에 없는 금액은 '확인 필요(낮음)' |
+| 글자 크기 | OCR 박스 높이(이미지) / 글자 pt(PPT 텍스트) 를 최대 글자와 비교 | 기준값은 사내 규정에 맞게 조정 필요 |
+| OCR 품질 | 평균 신뢰도, 숫자 포함 저신뢰 문구, 텍스트 추출 실패 | 숫자 한 글자 오류 대비 |
+
+## OCR 엔진 (두 가지, `--engine` 으로 선택. 기본값은 PaddleOCR)
+| | PaddleOCR (기본) | Tesseract (`--engine tesseract`) |
+|---|---|---|
+| 처리 방식 | 탐지 → (기울기 보정) 줄 단위 인식 1회 | 설정이 다른 3가지 변형(`page`·`sparse`·`bands`)을 모두 돌려 합침 |
+| 반입 | 파이썬 패키지 + 모델 폴더 2개 (약 19MB) | 바이너리 + kor 데이터 |
+
+> PaddleOCR 이 설치되지 않았거나 모델 반입이 어려운 환경에서는 `--engine tesseract` 를 지정하세요.
+
+### 화질 저하 이미지 비교 결과 (`python3 tests/compare_engines.py`, 상세: `output/engine_comparison/report.md`)
+기준 광고 1장(정답 점검 결과 10건)을 JPEG 저화질·저해상도·블러·노이즈·기울기·저대비·복잡한 배경·복합 열화 10종으로 만들어 비교했습니다.
+
+| 열화 10종 합계 | Tesseract | PaddleOCR |
+|---|---|---|
+| 평균 문구 재현율 / 글자 적중률 | 77% / 76% | 89% / 92% |
+| 핵심 숫자 정확도 | 63/70 | 69/70 |
+| 점검 정탐 (정답 10건 × 10종) | 95/100 | 99/100 |
+| **누락** (걸려야 하는데 못 건 위반) | 5 | 1 |
+| 오탐 | 22 | 7 |
+| 처리 시간 중앙값 / 최대 | 5.3초 / 91.6초(노이즈 이미지) | 1.8초 / 2.2초 |
+| 신뢰도 85 이상인데 틀린 숫자 | 10건 | 0건 |
+
+- Tesseract 는 복잡한 배경(누락 3건)과 최악 복합 열화(누락 2건)에서 크게 무너졌고, 숫자 오독이 잦았습니다(`1,000`→`1.000`·`11000`, `20년`→`26년`, `7,000`→`7.000`).
+- 둘 다 해상도가 40~50% 이하로 떨어지면 작은 각주를 못 읽어 **'필수 문구 누락 의심' 오탐**이 생깁니다. 사람도 못 읽는 수준이면 도구도 못 읽으며, 이 경우는 누락 쪽이 아니라 과다 경고 쪽으로 틀립니다.
+- PaddleOCR 에서도 한 글자 오독으로 위반 1건을 놓쳤습니다(노이즈 이미지에서 `저렴`→`저럼`, 신뢰도 89.7). 금지 표현은 정확 일치 방식이라 이런 경우가 생깁니다.
+- **주의:** 합성 이미지 1장의 변형 10종(동일 레이아웃·글꼴)이라 일반화에는 한계가 있습니다. 실제 광고물로 같은 비교를 해보세요
+  (`tests/compare_engines.py` 의 `GT_LINES`·`KEY_PHRASES` 를 실제 광고의 정답 문구로 바꾸고 `samples/degraded/` 에 이미지를 넣으면 됩니다).
+
+### 다양한 광고 이미지 비교 결과 (`python3 tests/make_diverse.py` → `python3 tests/compare_diverse.py`, 상세: `output/diverse/report.md`)
+글꼴·배경·레이아웃이 서로 다른 광고 15종(명조·둥근체·손글씨·붓글씨·사진 배경·표·카드·네온·회전·세로쓰기·빽빽한 각주·영문 혼용·스캔 전단 등)
+× 3단계(원본 / 약한 열화 / 강한 열화) = 45장. 정답 문구와 정답 위반 목록은 생성 시 기록한 값입니다.
+
+| 45장 합계 | Tesseract | PaddleOCR | 병행(합집합) |
+|---|---|---|---|
+| 줄 유사도 / 줄 정확(99↑) | 82% / 55% | 93% / 77% | 93% / 81% |
+| 숫자 정확 | 83% | 88% | 91% |
+| 위반 정탐 / 누락 | 175/201 / 26 | 195/201 / 6 | 196/201 / 5 |
+| 오탐 | 58 | 38 | 57 |
+| 처리 시간 중앙값 | 6.0초 | 1.1초 | 7.0초 |
+
+- 이미지 단위 승패: PaddleOCR 우세 30 / 무승부 15 / Tesseract 우세 0. 레이아웃 15종 단위: 13 / 2 / 0.
+- Tesseract 가 크게 약한 유형: 회전 글씨·원형 배지(58% vs 95%), 복고풍 밝은 배경의 흰 글씨(54% vs 92%), 세로쓰기(69% vs 89%), 사진 배경 외곽선 글씨(67% vs 94%).
+- 두 엔진이 비슷한 유형: 표, 영문 혼용, 카드, 명조·손글씨, 가는 글씨(모두 80~99%).
+- 공통으로 약한 곳: 강한 열화(해상도 50%) 상태의 작은 각주 → 두 엔진 모두 읽지 못해 '필수 문구 누락 의심' 오탐이 대부분을 차지합니다(과다 경고 방향의 오류).
+- 병행(두 엔진 결과 합집합)은 누락을 6→5건으로만 줄이고 오탐은 38→57건, 시간은 6배로 늘려 **이득이 거의 없습니다**.
+- PaddleOCR 의 남은 문제: ① 한 글자 오독(`저렴`→`저럼`)은 금지 표현 정확 일치로 놓침 ② 세로쓰기는 글자가 따로 읽혀 읽기 순서가 섞임
+  ③ 줄 사이 간격이 넓으면 한 줄이 여러 블록으로 쪼개져, 항목명과 숫자가 다른 블록에 있을 때 수치 대조가 어긋나는 경우가 있음.
+- 한계: 합성 이미지(실제 사진·인쇄물 아님)이고, 각 레이아웃을 3단계로 변형한 것이라 독립 표본은 15개입니다. 시간은 2코어 CPU 샌드박스 기준입니다.
+
+### PaddleOCR 설치·사용 (검증 환경: paddlepaddle 3.3.1 / paddleocr 3.7.0 / paddlex 3.7.2, CPU)
+```bash
+pip install paddlepaddle==3.3.1 paddleocr==3.7.0
+# 모델 2개를 인터넷 되는 곳에서 한 번 받아 폴더째 반입 (각각 inference.json, .pdiparams, .yml 등 포함)
+#   PP-OCRv5_mobile_det (4.8MB), korean_PP-OCRv5_mobile_rec (14MB)
+#   받는 법: PADDLE_PDX_MODEL_SOURCE=huggingface python -m adreview ocr 아무이미지.png --engine paddle
+#            → 홈의 ~/.paddlex/official_models/ 아래에 저장됨
+python -m adreview ocr ad.png --engine paddle \
+  --ocr-opts '{"det_model_dir": "D:/models/PP-OCRv5_mobile_det", "rec_model_dir": "D:/models/korean_PP-OCRv5_mobile_rec"}'
+```
+주의사항
+- 이 엔진은 paddleocr 통합 파이프라인 대신 탐지·인식 모델을 따로 호출합니다. 개발 환경의 Paddle 3.3 CPU 빌드에서
+  탐지 모델은 oneDNN 이 켜져 있으면 오류가 나고, 한국어 인식 모델은 oneDNN 이 꺼져 있으면 한글이 모두 공백으로 나왔기 때문입니다
+  (그래서 det 는 `det_run_mode: "paddle"`, rec 는 기본값). **사내 환경의 Paddle 버전·CPU 가 다르면 동작이 다를 수 있으니 `ocr` 명령으로 먼저 확인하세요.**
+- `OMP_THREAD_LIMIT=1` 같은 스레드 제한 환경변수를 프로세스 전체에 주면 Paddle 인식 결과가 깨졌습니다. Tesseract 하위 프로세스 호출 동안에만 적용되도록 해 두었으니, 직접 이 변수를 설정해 실행하지 마세요.
+- 기본 탐지 모델은 경량(mobile)입니다. `PP-OCRv5_server_det`(85MB)는 더 정확할 수 있지만 샘플 한 장에 메모리 6GB 이상을 써서 8GB 환경에서 강제 종료됐습니다.
+- GPU 환경은 검증하지 않았습니다.
+
+### Tesseract 동작
+광고물은 큰 제목과 아주 작은 각주가 섞여 한 가지 설정으로는 둘 다 못 읽습니다. 그래서 세 가지 변형을 모두 돌려 합칩니다.
+`page`(페이지 전체) · `sparse`(흩어진 글자) · `bands`(가로 띠로 잘라 3배 확대, 작은 글씨 복원).
+속도가 중요하면 `--ocr-opts '{"variants": ["page","bands"]}'` 처럼 줄일 수 있습니다.
+
+## 폐쇄망 반입 체크리스트
+1. **Python 패키지**: 인터넷 되는 PC 에서 `pip download -r requirements.txt -d wheels/` → 반입 → `pip install --no-index --find-links wheels/ -r requirements.txt`
+2. **Tesseract 바이너리 + 한글 데이터(kor.traineddata)**: Windows 는 UB-Mannheim 설치본, Linux 는 `tesseract-ocr`, `tesseract-ocr-kor` 패키지.
+   Windows 에서는 `pytesseract.pytesseract.tesseract_cmd` 경로 지정이 필요할 수 있습니다.
+3. **LibreOffice**: PPTX 슬라이드를 이미지로 렌더링할 때 사용(`soffice` 가 PATH 에 있어야 함). 없으면 슬라이드 렌더링 OCR 만 생략되고
+   네이티브 텍스트와 삽입 이미지 OCR 은 동작합니다. **한글 폰트 설치 필수**(없으면 렌더링 글자가 깨짐).
+4. (선택, 권장) PaddleOCR: 위 'PaddleOCR 설치·사용' 참고. 모델 폴더 2개를 반입하고 `--ocr-opts` 로 경로를 지정하면 자동 다운로드가 일어나지 않습니다.
+
+## 기준 문서(HWP) 처리
+- `.hwp`(5.x) 는 `olefile` 로 본문(BodyText)을 직접 파싱합니다. 실패 시 `hwp5txt`(pyhwp) → 미리보기(PrvText, 앞부분만) 순으로 대체하며 경고를 출력합니다.
+- 배포용/암호화 HWP 는 지원하지 않습니다 → 한글에서 일반 문서로 다시 저장하거나 DOCX/PDF 로 변환하세요.
+- **반드시 `build-reference` 실행 후 `output/ref_index.json` 의 조항 수와 내용이 맞는지 확인하세요.** (표 안 글자, 각주 등은 누락될 수 있음)
+- 같은 규정이 HWP/DOCX/PDF 로 중복돼 있으면 검색 결과에서 하나로 합쳐 보여줍니다.
+
+## 한계 (알고 쓰세요)
+- "소비자 오인 소지", "불리한 조건 축소" 같은 **의미·맥락 판단은 못 합니다.** 관련 조항을 나란히 보여주는 데까지가 역할입니다.
+- OCR 누락은 '필수 문구 누락 의심' 오탐으로 나타날 수 있으니 원본 확인이 필요합니다. 반대로 점검에서 걸리지 않았다고 규정 부합이 확인된 것은 아닙니다.
+- 룰(`rules.yaml`)과 상품 마스터(`product_master.yaml`)의 품질이 곧 점검 품질입니다. 현재 파일의 값은 **구조를 보여주는 예시**입니다.
+- PPT 내 도형 안 글자 · 표 · 그룹은 처리하지만 SmartArt·차트 내부 글자는 렌더링 OCR 에 의존합니다. `.ppt`(구형)는 `.pptx` 로 변환 필요.
+- 대비(글자색/배경색), 폰트 굵기, 영상·애니메이션 문구는 점검하지 않습니다.
