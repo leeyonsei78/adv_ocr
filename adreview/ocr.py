@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+from pathlib import Path
 import re
 from typing import Optional
 
@@ -336,8 +337,28 @@ class PaddleOCREngine(OCREngine):
         return sort_reading_order(merge_blocks(groups) if len(groups) > 1 else groups[0])
 
 
+def default_ocr_opts(root=None) -> dict:
+    """폐쇄망용 기본 OCR 옵션. 우선순위: config/ocr.json > 저장소의 models/ 폴더 > (없으면 빈 값 = 라이브러리 기본 모델)."""
+    base = Path(root) if root else Path(__file__).resolve().parent.parent
+    opts: dict = {}
+    det, rec = base / "models" / "PP-OCRv5_mobile_det", base / "models" / "korean_PP-OCRv5_mobile_rec"
+    if (det / "inference.yml").exists() and (rec / "inference.yml").exists():
+        opts = {"det_model_dir": str(det), "rec_model_dir": str(rec)}
+    cfg = base / "config" / "ocr.json"
+    if cfg.exists():
+        import json
+        user = json.loads(cfg.read_text(encoding="utf-8"))
+        for k, v in (user.get("paddle") or {}).items():
+            if isinstance(v, str) and k.endswith("_dir") and not os.path.isabs(v):
+                v = str(base / v)
+            opts[k] = v
+    return opts
+
+
 def build_engine(name: str = "paddle", opts: Optional[dict] = None) -> OCREngine:
-    opts = opts or {}
+    opts = dict(opts or {})
+    if name == "paddle":
+        opts = {**default_ocr_opts(), **opts}
     if name == "tesseract":
         return TesseractEngine(**opts)
     if name == "paddle":

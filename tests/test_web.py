@@ -140,6 +140,61 @@ def test_backup_name_traversal_blocked():
     assert c.get("/job/..%2f..%2fetc/file/passwd").status_code == 404
 
 
+# ---------------- 로그인 · 권한 · 감사 로그 ----------------
+def make_auth_app(pw="user-pw", admin="admin-pw"):
+    tmp = Path(tempfile.mkdtemp())
+    cfg = tmp / "config"
+    shutil.copytree(ROOT / "config", cfg, ignore=shutil.ignore_patterns("history"))
+    st = State("paddle", {}, config_dir=cfg, out_root=tmp / "out", engine_factory=lambda n: FakeEngine(),
+               password=pw, admin_password=admin)
+    return create_app(st).test_client(), st
+
+
+def test_login_required_and_roles():
+    c, st = make_auth_app()
+    assert c.get("/").status_code == 302 and "/login" in c.get("/").headers["Location"]
+    assert c.get("/job/x/status").status_code == 401
+    assert c.post("/api/criteria/rules/structured", json={}).status_code == 401
+    # 잘못된 비밀번호
+    assert "올바르지" in c.post("/login", data={"name": "홍길동", "pw": "x"}).get_data(as_text=True)
+    # 검수자: 검수 화면은 되지만 기준 수정은 불가
+    assert c.post("/login", data={"name": "홍길동", "pw": "user-pw"}).status_code == 302
+    assert c.get("/").status_code == 200 and c.get("/criteria").status_code == 200
+    r = c.post("/api/criteria/rules/structured", json={"required_phrases": [], "prohibited_expressions": []})
+    assert r.status_code == 403
+    # 관리자: 수정 가능, 변경자는 로그인 이름으로 기록
+    c.get("/logout")
+    c.post("/login", data={"name": "관리자A", "pw": "admin-pw"})
+    rules = C.load("rules", st.config_dir)
+    j = c.post("/api/criteria/rules/structured", json={"required_phrases": rules["required_phrases"],
+               "prohibited_expressions": rules["prohibited_expressions"], "note": "t", "user": "위조"}).get_json()
+    assert j["ok"] and C.list_history(config_dir=st.config_dir)[0]["user"] == "관리자A"
+    log = (st.out_root / "audit.log").read_text(encoding="utf-8")
+    assert "login_fail" in log and "criteria_save" in log and "관리자A" in log
+
+
+def test_login_throttle():
+    c, st = make_auth_app()
+    for _ in range(5):
+        c.post("/login", data={"name": "a", "pw": "bad"})
+    r = c.post("/login", data={"name": "a", "pw": "user-pw"})       # 올바른 비밀번호여도 잠금 중
+    assert r.status_code == 200 and "초과" in r.get_data(as_text=True)
+
+
+def test_single_password_allows_everything():
+    c, st = make_auth_app(pw="only", admin="")
+    c.post("/login", data={"name": "김", "pw": "only"})
+    rules = C.load("rules", st.config_dir)
+    assert c.post("/api/criteria/rules/structured", json={"required_phrases": rules["required_phrases"],
+                  "prohibited_expressions": rules["prohibited_expressions"]}).get_json()["ok"]
+
+
+def test_default_ocr_opts_use_bundled_models():
+    from adreview.ocr import default_ocr_opts
+    o = default_ocr_opts()
+    assert Path(o["det_model_dir"]).name == "PP-OCRv5_mobile_det" and Path(o["rec_model_dir"]).exists()
+
+
 if __name__ == "__main__":
     fails = 0
     for n, fn in list(globals().items()):

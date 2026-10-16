@@ -87,7 +87,7 @@ def cmd_check(a) -> int:
 
 def cmd_web(a) -> int:
     from .webapp import serve
-    return serve(a.host, a.port, a.engine, a.ocr_opts)
+    return serve(a.host, a.port, a.engine, a.ocr_opts, a.password or "", a.admin_password or "")
 
 
 def main(argv=None) -> int:
@@ -127,6 +127,8 @@ def main(argv=None) -> int:
     p4 = sub.add_parser("web", help="웹 화면 실행 (PPT/이미지 업로드 검수 + 검수 기준 관리)")
     p4.add_argument("--host", default="127.0.0.1", help="기본 127.0.0.1(본인 PC만). 사내망 공유 시 0.0.0.0 (인증이 없으니 내부망에서만)")
     p4.add_argument("--port", type=int, default=8080)
+    p4.add_argument("--password", help="검수자 비밀번호 (환경변수 ADREVIEW_PASSWORD 도 가능). 지정하면 로그인이 필요")
+    p4.add_argument("--admin-password", help="관리자 비밀번호 (환경변수 ADREVIEW_ADMIN_PASSWORD). 지정하면 기준 수정은 관리자만")
     add_ocr_args(p4)
     p4.set_defaults(fn=cmd_web)
 

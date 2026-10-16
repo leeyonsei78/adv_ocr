@@ -5,23 +5,27 @@
   · 인터넷 없이 동작한다(외부 CDN·폰트 미사용). Flask 만 있으면 된다.
   · 검수 결과(HTML/엑셀/JSON)에는 '이번에 적용된 기준 버전·룰 목록'이 함께 들어간다.
   · 기준을 저장하면 이전 파일이 config/history/ 에 백업되고 변경 메모가 남는다.
-  · 인증 기능이 없다. 기본은 127.0.0.1(본인 PC)에서만 열리며, 사내망에 공유할 때는 내부망에서만 쓰고
-    접근 통제(방화벽·리버스 프록시 인증 등)를 따로 두어야 한다.
+  · 기본은 127.0.0.1(본인 PC)에서만 열린다. 사내망에 공유할 때는 --password(검수자) / --admin-password(기준 수정) 로
+    로그인을 켜고, 검수·기준 변경은 output/web/audit.log 에 기록된다. (https 는 사내 프록시 등으로 별도 구성)
 """
 from __future__ import annotations
 
 import datetime as dt
 import difflib
+import hmac
 import json
+import os
 import re
+import secrets
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
 import yaml
-from flask import Flask, abort, jsonify, redirect, render_template_string, request, send_from_directory
+from flask import Flask, abort, g, jsonify, redirect, render_template_string, request, send_from_directory, session
 
 from . import criteria as C
 from .extract import IMAGE_EXTS
@@ -76,7 +80,7 @@ iframe{width:100%;height:78vh;border:1px solid var(--line);border-radius:8px;bac
 <a href="/" class="{{ 'on' if tab=='check' }}">검수</a>
 <a href="/jobs" class="{{ 'on' if tab=='jobs' }}">검수 이력</a>
 <a href="/criteria" class="{{ 'on' if tab=='criteria' }}">검수 기준 관리</a>
-</nav><span class="mut small" style="margin-left:auto">1차 점검 보조 도구 — 최종 판단은 담당자</span></header>
+</nav><span class="mut small" style="margin-left:auto">{% if who %}{{ who }} ({{ role }}) · <a href="/logout">로그아웃</a> · {% endif %}1차 점검 보조 도구 — 최종 판단은 담당자</span></header>
 <main>{{ body|safe }}</main>
 <script>
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
@@ -86,7 +90,15 @@ async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'C
 
 
 def page(title: str, tab: str, body: str) -> str:
-    return render_template_string(BASE, title=title, tab=tab, body=body)
+    return render_template_string(BASE, title=title, tab=tab, body=body,
+                                  who=getattr(g, "who", ""), role=getattr(g, "role_ko", ""))
+
+
+LOGIN = """<div class="card" style="max-width:420px;margin:60px auto"><h2>로그인</h2>
+<form method="post"><label>이름 (검수·변경 이력에 기록됩니다)</label><input type="text" name="name" required maxlength="30" autofocus>
+<label>비밀번호</label><input type="password" name="pw" required style="width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:7px 9px">
+<p class="err">{err}</p><button type="submit">로그인</button></form></div>"""
+
 
 
 def _crit_panel(c: dict, link: bool = True) -> str:
@@ -108,11 +120,16 @@ def _crit_panel(c: dict, link: bool = True) -> str:
 # ----------------------------------------------------------------------------
 class State:
     def __init__(self, engine_name: str, ocr_opts: Optional[dict], config_dir: Optional[Path] = None,
-                 out_root: Optional[Path] = None, engine_factory=None):
+                 out_root: Optional[Path] = None, engine_factory=None,
+                 password: str = "", admin_password: str = ""):
         self.engine_name, self.ocr_opts = engine_name, ocr_opts or {}
+        self.password = password or os.environ.get("ADREVIEW_PASSWORD", "")
+        self.admin_password = admin_password or os.environ.get("ADREVIEW_ADMIN_PASSWORD", "")
+        self.fails: dict = {}
         self.config_dir = Path(config_dir or C.CONFIG_DIR)
         self.out_root = Path(out_root or ROOT / "output" / "web")
         self.out_root.mkdir(parents=True, exist_ok=True)
+        self.audit_path = self.out_root / "audit.log"
         self.engine_factory = engine_factory
         self._engines: dict = {}
         self._elock = threading.Lock()
@@ -132,11 +149,87 @@ class State:
     def cfg(self, key: str) -> Path:
         return C.path_of(key, self.config_dir)
 
+    @property
+    def auth(self) -> bool:
+        return bool(self.password or self.admin_password)
+
+    def secret(self) -> bytes:
+        f = self.out_root / ".secret"          # 재시작해도 로그인이 풀리지 않도록 보관
+        if not f.exists():
+            f.write_text(secrets.token_hex(32))
+            try:
+                os.chmod(f, 0o600)
+            except OSError:
+                pass
+        return f.read_text().encode()
+
+    def audit(self, who: str, role: str, action: str, detail: str = "") -> None:
+        rec = {"time": dt.datetime.now().isoformat(timespec="seconds"), "ip": request.remote_addr, "user": who,
+               "role": role, "action": action, "detail": detail[:300]}
+        with self.audit_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
 
 def create_app(state: State) -> Flask:
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD
     S = state
+    app.secret_key = S.secret()
+    app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+    PUBLIC = {"login", "static"}
+
+    @app.before_request
+    def gate():
+        role = session.get("role", "")
+        g.who, g.role, g.role_ko = session.get("name", ""), role, {"admin": "관리자", "user": "검수자"}.get(role, "")
+        if not S.auth:
+            g.role, g.role_ko = "admin", ""
+            return None
+        if request.endpoint in PUBLIC:
+            return None
+        if not g.role:
+            if request.path.startswith(("/api/", "/check")) or request.path.endswith("/status"):
+                return jsonify(ok=False, error="로그인이 필요합니다."), 401
+            return redirect("/login")
+        if request.path.startswith("/api/criteria") and request.method == "POST":
+            if S.admin_password and g.role != "admin":
+                return jsonify(ok=False, error="검수 기준은 관리자만 수정할 수 있습니다."), 403
+        return None
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if not S.auth:
+            return redirect("/")
+        err = ""
+        if request.method == "POST":
+            ip = request.remote_addr or "?"
+            n, until = S.fails.get(ip, (0, 0))
+            if until > time.time():
+                err = "시도 횟수를 초과했습니다. 잠시 후 다시 시도하세요."
+            else:
+                pw, name = request.form.get("pw", ""), (request.form.get("name", "").strip() or "이름없음")[:30]
+                role = ""
+                if S.admin_password and hmac.compare_digest(pw.encode(), S.admin_password.encode()):
+                    role = "admin"
+                elif S.password and hmac.compare_digest(pw.encode(), S.password.encode()):
+                    role = "user" if S.admin_password else "admin"      # 비밀번호가 하나뿐이면 모두 기준 수정 가능
+                if role:
+                    session.clear()
+                    session.update(name=name, role=role)
+                    S.fails.pop(ip, None)
+                    S.audit(name, role, "login")
+                    return redirect("/")
+                n += 1
+                S.fails[ip] = (n, time.time() + 60 if n >= 5 else 0)
+                S.audit(name, "", "login_fail")
+                err = "비밀번호가 올바르지 않습니다."
+        g.who = g.role_ko = ""
+        return page("로그인", "", LOGIN.format(err=err))
+
+    @app.get("/logout")
+    def logout():
+        session.clear()
+        return redirect("/login" if S.auth else "/")
 
     def current_criteria() -> dict:
         return C.describe(C.load("rules", S.config_dir), C.load("checklist", S.config_dir),
@@ -222,6 +315,9 @@ $('#f').onsubmit=async ev=>{{ev.preventDefault();localStorage.setItem('adr_user'
                "user": request.form.get("user", "")[:40], "created": dt.datetime.now().isoformat(timespec="seconds"),
                "engine": eng, "criteria": None, "n_review": {}, "errors": []}
         S.jobs[jid] = job
+        if S.auth and g.who:
+            job["user"] = g.who
+        S.audit(job["user"] or g.who, g.role, "check", f"{jid}: {', '.join(job['files'])[:200]}")
 
         def work():
             job["state"] = "running"
@@ -325,10 +421,13 @@ tick();
         return page("검수 기준 관리", "criteria", body)
 
     def _save(key: str, text: str, d: dict):
+        if S.auth and g.who:
+            d["user"] = g.who                  # 로그인한 이름으로 변경자를 기록 (화면 입력값 무시)
         try:
             e = C.save(key, text, d.get("note", ""), d.get("user", ""), S.config_dir)
         except ValueError as ex:
             return jsonify(ok=False, error=str(ex))
+        S.audit(d.get("user", ""), g.role, "criteria_save", f"{e['file']} {e.get('note', '')}")
         return jsonify(ok=True, version=current_criteria()["version"], entry=e)
 
     def _header_comment(key: str) -> str:
@@ -547,11 +646,14 @@ def _history_view(config_dir) -> str:
             "report(await post('/api/criteria/restore',{name:n,note:$('#note').value,user:$('#who').value}))}$('#save').style.display='none'</script>")
 
 
-def serve(host: str = "127.0.0.1", port: int = 8080, engine: str = "paddle", ocr_opts: Optional[str] = None) -> int:
+def serve(host: str = "127.0.0.1", port: int = 8080, engine: str = "paddle", ocr_opts: Optional[str] = None,
+          password: str = "", admin_password: str = "") -> int:
     opts = json.loads(ocr_opts) if ocr_opts else {}
-    app = create_app(State(engine, opts))
+    st = State(engine, opts, password=password, admin_password=admin_password)
+    app = create_app(st)
+    print("로그인: " + ("사용 (관리자/검수자 구분)" if st.admin_password and st.password else "사용" if st.auth else "없음"))
     print(f"검수 화면: http://{host if host != '0.0.0.0' else '127.0.0.1'}:{port}   (종료: Ctrl+C)")
-    if host not in ("127.0.0.1", "localhost"):
-        print("[주의] 이 화면에는 로그인 기능이 없습니다. 내부망에서만 열고 접근 통제를 따로 두세요.")
+    if host not in ("127.0.0.1", "localhost") and not st.auth:
+        print("[주의] 비밀번호가 설정되지 않았습니다. --password 를 지정하거나 내부망에서만 여십시오.")
     app.run(host=host, port=port, threaded=True)
     return 0

@@ -1,0 +1,15 @@
+# 폐쇄망 반입용 (이 PoC 에서 검증한 버전). 인터넷 되는 PC 에서 scripts/make_offline_bundle.py 로 wheel 을 모은다.
+python-pptx==1.0.2
+python-docx==1.2.0
+PyMuPDF==1.28.2
+Pillow>=10
+opencv-python-headless>=4.8
+numpy>=1.24
+PyYAML>=6
+olefile>=0.46
+openpyxl>=3.1
+Flask>=3.0
+rapidfuzz>=3.0          # 평가 스크립트(tests/)용 — 서비스 실행에는 불필요
+paddlepaddle==3.3.1
+paddleocr==3.7.0
+paddlex==3.7.2
