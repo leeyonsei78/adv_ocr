@@ -35,11 +35,29 @@ def extract_image(path: str, engine: OCREngine) -> list:
 # ----------------------------------------------------------------------------
 # PDF  (광고 PDF 입력용: 텍스트 레이어 + 페이지 렌더링 OCR)
 # ----------------------------------------------------------------------------
+MAX_PDF_PAGES = 200
+MAX_PPTX_SLIDES = 300
+MAX_PPTX_UNZIPPED = 600 * 1024 * 1024        # 압축 해제 후 총 크기 (zip 폭탄 방지)
+
+
+def guard_pptx(path: str) -> None:
+    import zipfile
+    with zipfile.ZipFile(path) as z:
+        total = sum(i.file_size for i in z.infolist())
+        if total > MAX_PPTX_UNZIPPED:
+            raise ValueError(f"PPTX 압축 해제 크기가 너무 큽니다({total // 1048576}MB).")
+        if any(i.filename.startswith(("/", "..")) or ".." in Path(i.filename).parts for i in z.infolist()):
+            raise ValueError("PPTX 내부 경로가 올바르지 않습니다.")
+
+
 def render_pdf_pages(pdf_path: str, out_dir: str, dpi: int = 200) -> list:
     import pymupdf
 
     paths = []
     doc = pymupdf.open(pdf_path)
+    if doc.page_count > MAX_PDF_PAGES:
+        doc.close()
+        raise ValueError(f"PDF 페이지가 너무 많습니다(최대 {MAX_PDF_PAGES}쪽).")
     zoom = dpi / 72
     for i, page in enumerate(doc, start=1):
         pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
@@ -139,7 +157,10 @@ def render_pptx_to_pngs(pptx_path: str, out_dir: str, dpi: int = 200, timeout: i
 def extract_pptx(path: str, engine: OCREngine, workdir: str, render_dpi: int = 200) -> list:
     from pptx import Presentation
 
+    guard_pptx(path)
     prs = Presentation(path)
+    if len(prs.slides) > MAX_PPTX_SLIDES:
+        raise ValueError(f"슬라이드가 너무 많습니다(최대 {MAX_PPTX_SLIDES}장).")
     stem = Path(path).stem
     rendered, warn = render_pptx_to_pngs(path, workdir, dpi=render_dpi)
     pages = []

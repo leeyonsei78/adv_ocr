@@ -130,6 +130,7 @@ class State:
         self.out_root = Path(out_root or ROOT / "output" / "web")
         self.out_root.mkdir(parents=True, exist_ok=True)
         self.audit_path = self.out_root / "audit.log"
+        self.retention_days = int(os.environ.get("ADREVIEW_RETENTION_DAYS", "0") or 0)
         self.engine_factory = engine_factory
         self._engines: dict = {}
         self._elock = threading.Lock()
@@ -163,6 +164,18 @@ class State:
                 pass
         return f.read_text().encode()
 
+    def purge_old(self) -> int:
+        """보관기간(일)이 지난 검수 결과 폴더를 삭제한다. 0 이면 삭제하지 않는다. (감사 로그는 유지)"""
+        if self.retention_days <= 0:
+            return 0
+        import shutil
+        cutoff, n = time.time() - self.retention_days * 86400, 0
+        for d in self.out_root.iterdir():
+            if d.is_dir() and re.fullmatch(r"\d{8}-\d{6}-[0-9a-f]{6}", d.name) and d.stat().st_mtime < cutoff:
+                shutil.rmtree(d, ignore_errors=True)
+                n += 1
+        return n
+
     def audit(self, who: str, role: str, action: str, detail: str = "") -> None:
         rec = {"time": dt.datetime.now().isoformat(timespec="seconds"), "ip": request.remote_addr, "user": who,
                "role": role, "action": action, "detail": detail[:300]}
@@ -177,6 +190,25 @@ def create_app(state: State) -> Flask:
     app.secret_key = S.secret()
     app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
     PUBLIC = {"login", "static"}
+    app.config["PERMANENT_SESSION_LIFETIME"] = dt.timedelta(hours=8)
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get("ADREVIEW_SECURE_COOKIE", "") == "1"   # https 프록시 뒤에서 1
+
+    @app.after_request
+    def headers(resp):
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        resp.headers["Cache-Control"] = "no-store"
+        if request.endpoint == "job_file":      # 결과 리포트: 스크립트·외부 연결 전부 차단 (OCR 문구가 섞여 있어도 실행되지 않게)
+            resp.headers["Content-Security-Policy"] = ("default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; "
+                                                       "frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
+            if request.path.endswith((".xlsx", ".json")):
+                resp.headers["Content-Disposition"] = "attachment"
+        else:
+            resp.headers["Content-Security-Policy"] = ("default-src 'self'; img-src 'self' data:; style-src 'unsafe-inline'; "
+                                                       "script-src 'unsafe-inline'; connect-src 'self'; frame-src 'self'; "
+                                                       "frame-ancestors 'self'; base-uri 'none'; form-action 'self'")
+        resp.headers["X-Frame-Options"] = "SAMEORIGIN"
+        return resp
 
     @app.before_request
     def gate():
@@ -215,6 +247,7 @@ def create_app(state: State) -> Flask:
                     role = "user" if S.admin_password else "admin"      # 비밀번호가 하나뿐이면 모두 기준 수정 가능
                 if role:
                     session.clear()
+                    session.permanent = True
                     session.update(name=name, role=role)
                     S.fails.pop(ip, None)
                     S.audit(name, role, "login")
@@ -353,7 +386,7 @@ $('#f').onsubmit=async ev=>{{ev.preventDefault();localStorage.setItem('adr_user'
     def job_page(jid):
         j = load_job(jid)
         body = f"""<div class="card"><h2>검수 진행 <span class="pill" id="st">{j['state']}</span></h2>
-<div class="small mut">{', '.join(j['files'])}</div><pre class="log" id="log"></pre>
+<div class="small mut">{_esc(', '.join(j['files']))}</div><pre class="log" id="log"></pre>
 <div id="links" style="display:none;margin-top:8px"><a class="btn" href="/job/{jid}/file/report.html" target="_blank">리포트 새 창</a>
 <a class="btn sec" href="/job/{jid}/file/result.xlsx">엑셀 받기</a> <a class="btn sec" href="/job/{jid}/file/result.json">JSON 받기</a>
 <a class="btn sec" href="/job/{jid}/file/criteria.json">적용 기준(JSON)</a></div></div>
@@ -393,8 +426,8 @@ tick();
             except Exception:
                 continue
             c = j.get("criteria") or {}
-            rows.append(f"<tr><td><a href='/job/{j['id']}'>{j['created'].replace('T', ' ')}</a></td><td>{', '.join(j['files'])[:90]}</td>"
-                        f"<td>{j.get('user', '')}</td><td>{j.get('engine', '')}</td>"
+            rows.append(f"<tr><td><a href='/job/{j['id']}'>{j['created'].replace('T', ' ')}</a></td><td>{_esc(', '.join(j['files'])[:90])}</td>"
+                        f"<td>{_esc(j.get('user', ''))}</td><td>{_esc(j.get('engine', ''))}</td>"
                         f"<td>{('<span class=\"pill ver\">' + c['version'] + '</span>') if c else '-'}</td><td>{j['state']}</td></tr>")
         body = ("<div class='card'><h2>검수 이력</h2><table><tr><th>시각</th><th>파일</th><th>요청자</th><th>OCR</th><th>적용 기준 버전</th><th>상태</th></tr>"
                 + ("".join(rows) or "<tr><td colspan=6 class='mut'>아직 검수 이력이 없습니다.</td></tr>") + "</table>"
@@ -655,5 +688,13 @@ def serve(host: str = "127.0.0.1", port: int = 8080, engine: str = "paddle", ocr
     print(f"검수 화면: http://{host if host != '0.0.0.0' else '127.0.0.1'}:{port}   (종료: Ctrl+C)")
     if host not in ("127.0.0.1", "localhost") and not st.auth:
         print("[주의] 비밀번호가 설정되지 않았습니다. --password 를 지정하거나 내부망에서만 여십시오.")
-    app.run(host=host, port=port, threaded=True)
+    n = st.purge_old()
+    if st.retention_days:
+        print(f"결과 보관기간 {st.retention_days}일 (삭제 {n}건)")
+    try:
+        from waitress import serve as wserve          # 운영용 WSGI 서버(순수 파이썬). 없으면 개발용 서버로 대체
+        wserve(app, host=host, port=port, threads=4, max_request_body_size=MAX_UPLOAD, ident="adreview")
+    except ImportError:
+        print("[주의] waitress 가 없어 Flask 개발용 서버로 실행합니다. 운영에서는 waitress 설치를 권장합니다.")
+        app.run(host=host, port=port, threaded=True)
     return 0

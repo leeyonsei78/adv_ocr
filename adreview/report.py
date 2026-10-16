@@ -180,6 +180,15 @@ def _index_html(results: list, out_dir: str, image_maps: dict) -> str:
     return "".join(out)
 
 
+def _append(ws, row) -> None:
+    """엑셀 수식 주입 방지: OCR 문구·파일명이 '=' 로 시작해도 수식으로 해석되지 않도록 문자열로 고정한다."""
+    ws.append(row)
+    for c in ws[ws.max_row]:
+        if isinstance(c.value, str) and c.value[:1] in ("=", "+", "@") or (isinstance(c.value, str) and c.value.startswith("-") and len(c.value) > 1):
+            c.data_type = "s"
+            c.quotePrefix = True
+
+
 def _criteria_html(c: dict) -> str:
     """리포트 상단: 이번 검수에 적용된 기준(버전·파일·룰 목록)을 보여 준다."""
     if not c:
@@ -322,7 +331,7 @@ def write_xlsx(results: list, out_dir: str, criteria: dict = None) -> str:
     ws = wb.active
     ws.title = "검토 항목"
     head = ["파일", "페이지", "상태", "중요도", "룰", "항목", "매칭 문구", "상세", "근거 규정", "관련 조항(상위1)", "담당자 판단", "비고"]
-    ws.append(head)
+    _append(ws, head)
     for c in ws[1]:
         c.font = Font(bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor="333333")
@@ -331,7 +340,7 @@ def write_xlsx(results: list, out_dir: str, criteria: dict = None) -> str:
         for f in r.findings:
             rel = f"{f.related[0]['source']} {f.related[0]['title']}: {f.related[0]['text'][:150]}" if f.related else ""
             status = {"review": "검토필요", "ok": "확인됨", "info": "참고"}.get(f.status, f.status)
-            ws.append([r.file, f.page, status, SEV_KO.get(f.severity, f.severity), f.rule_id, f.title,
+            _append(ws, [r.file, f.page, status, SEV_KO.get(f.severity, f.severity), f.rule_id, f.title,
                        f.matched_text, f.detail, f.basis, rel, "", ""])
             if f.status == "review":
                 for c in ws[ws.max_row]:
@@ -355,21 +364,21 @@ def write_xlsx(results: list, out_dir: str, criteria: dict = None) -> str:
 def _criteria_sheet(wb, c: dict) -> None:
     from openpyxl.styles import Alignment, Font, PatternFill
     ws = wb.create_sheet("적용 기준")
-    ws.append([f"기준 버전 {c['version']}"])
+    _append(ws, [f"기준 버전 {c['version']}"])
     ws["A1"].font = Font(bold=True, size=12)
     for f in c["files"]:
-        ws.append([f["label"], f["file"], f["sha"], f["modified"]])
-    ws.append([])
-    ws.append(["구분", "ID", "내용", "중요도", "검출 패턴", "상태"])
+        _append(ws, [f["label"], f["file"], f["sha"], f["modified"]])
+    _append(ws, [])
+    _append(ws, ["구분", "ID", "내용", "중요도", "검출 패턴", "상태"])
     for cell in ws[ws.max_row]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="333333")
     for kind, items in (("필수 문구", c["required"]), ("금지·주의 표현", c["prohibited"])):
         for r in items:
-            ws.append([kind, r["id"], r.get("name") or "", SEV_KO.get(r["severity"], r["severity"]),
+            _append(ws, [kind, r["id"], r.get("name") or "", SEV_KO.get(r["severity"], r["severity"]),
                        " | ".join(r["patterns"]), "적용" if r["enabled"] else "비활성"])
     for i in c["checklist"]:
-        ws.append(["점검표", i["num"], f"{i['group']} / {i['title']}", "", i["type"], "적용" if i["enabled"] else "비활성"])
+        _append(ws, ["점검표", i["num"], f"{i['group']} / {i['title']}", "", i["type"], "적용" if i["enabled"] else "비활성"])
     for col, w in zip("ABCDEF", (16, 14, 44, 10, 70, 10)):
         ws.column_dimensions[col].width = w
     for row in ws.iter_rows():
@@ -382,15 +391,15 @@ def _checklist_sheet(wb, results: list) -> None:
     from openpyxl.styles import Alignment, Font, PatternFill
     from .checklist import MARK_KO
     ws = wb.create_sheet("광고심의점검표")
-    ws.append(["※ 적합 ○ / 부적합 × / 미흡 △ / 해당사항 없음 - / 자동판정 불가 ?  — 자동 판정은 초안이며 담당자가 확인·수정해야 합니다."])
-    ws.append(["파일", "No.", "구분", "점검 항목", "확인(자동)", "판정 의미", "자동 판정 근거", "비고(규정)", "예시 문구", "담당자 확인", "담당자 의견"])
+    _append(ws, ["※ 적합 ○ / 부적합 × / 미흡 △ / 해당사항 없음 - / 자동판정 불가 ?  — 자동 판정은 초안이며 담당자가 확인·수정해야 합니다."])
+    _append(ws, ["파일", "No.", "구분", "점검 항목", "확인(자동)", "판정 의미", "자동 판정 근거", "비고(규정)", "예시 문구", "담당자 확인", "담당자 의견"])
     for c in ws[2]:
         c.font = Font(bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor="333333")
     fills = {"○": "DCFCE7", "×": "FDE2E2", "△": "FFF1D6", "?": "E3EDFF", "-": "EEEEEE"}
     for r in results:
         for c in r.checklist:
-            ws.append([r.file, c.no, c.group, c.title, c.mark, MARK_KO[c.mark],
+            _append(ws, [r.file, c.no, c.group, c.title, c.mark, MARK_KO[c.mark],
                        c.detail + ((" | " + " · ".join(c.evidence[:4])) if c.evidence else ""),
                        c.basis, c.sample, "", ""])
             ws.cell(ws.max_row, 5).fill = PatternFill("solid", fgColor=fills.get(c.mark, "FFFFFF"))

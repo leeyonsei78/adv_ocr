@@ -41,11 +41,16 @@ def _tesseract_env():
         os.environ.pop("OMP_THREAD_LIMIT", None)
 
 
+MAX_PIXELS = 60_000_000          # 약 7700x7700
+
+
 def load_bgr(path: str):
     """이미지를 BGR ndarray 로 읽는다. 투명 PNG 는 흰 배경에 합성한다. (한글 경로 안전)"""
     from PIL import Image
 
     im = Image.open(path)
+    if im.width * im.height > MAX_PIXELS:          # 이미지 폭탄(메모리 고갈) 방지
+        raise ValueError(f"이미지가 너무 큽니다({im.width}x{im.height}). {MAX_PIXELS // 1_000_000}백만 화소 이하만 처리합니다.")
     if im.mode in ("RGBA", "LA", "P"):
         im = im.convert("RGBA")
         bg = Image.new("RGBA", im.size, (255, 255, 255, 255))

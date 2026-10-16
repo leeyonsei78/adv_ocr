@@ -195,6 +195,99 @@ def test_default_ocr_opts_use_bundled_models():
     assert Path(o["det_model_dir"]).name == "PP-OCRv5_mobile_det" and Path(o["rec_model_dir"]).exists()
 
 
+# ---------------- 보안 ----------------
+def test_filename_is_escaped_no_stored_xss():
+    c, st, tmp = make_app()
+    evil = "<img src=x onerror=alert(1)>.png"
+    r = c.post("/check", data={"files": (io.BytesIO(png_bytes()), evil), "user": "<script>x</script>"},
+               content_type="multipart/form-data")
+    jid = r.get_json()["url"].rsplit("/", 1)[1]
+    wait_done(c, jid)
+    for url in ("/jobs", f"/job/{jid}"):
+        h = c.get(url).get_data(as_text=True)
+        assert "<img src=x" not in h and "<script>x</script>" not in h, url
+    rep = c.get(f"/job/{jid}/file/report.html")
+    assert "<img src=x" not in rep.get_data(as_text=True)
+    assert "default-src 'none'" in rep.headers["Content-Security-Policy"]
+
+
+def test_security_headers():
+    c, st, tmp = make_app()
+    h = c.get("/").headers
+    assert h["X-Content-Type-Options"] == "nosniff" and h["Cache-Control"] == "no-store"
+    assert "frame-ancestors" in h["Content-Security-Policy"] and h["X-Frame-Options"] == "SAMEORIGIN"
+
+
+def test_redos_pattern_rejected():
+    c, st, tmp = make_app()
+    j = c.post("/api/criteria/rules/structured", json={"required_phrases": [], "prohibited_expressions": [
+        {"id": "BAN-X", "pattern": "(a+)+$", "severity": "high"}]}).get_json()
+    assert not j["ok"] and "중첩" in j["error"]
+    assert not C.validate_rules(C.load("rules", ROOT / "config"))
+
+
+def test_xlsx_formula_injection_neutralized():
+    from openpyxl import load_workbook
+    from adreview.models import AdPage
+    from adreview.checks import check_file
+    from adreview.report import write_xlsx
+    pg = AdPage(file="=HYPERLINK(\"http://evil\")", label="image",
+                blocks=[TextBlock(text="=cmd|' /C calc'!A0 최고 무조건", source="native")])
+    res = check_file([pg], C.load("rules", ROOT / "config"), {})
+    out = Path(tempfile.mkdtemp())
+    wb = load_workbook(write_xlsx([res], str(out)))
+    for ws in wb:
+        for row in ws.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, str) and cell.value.startswith("="):
+                    assert cell.data_type == "s", (ws.title, cell.coordinate)
+
+
+def test_input_guards():
+    import zipfile
+    from adreview.extract import guard_pptx, extract_any
+    from adreview.ocr import MAX_PIXELS, load_bgr
+    tmp = Path(tempfile.mkdtemp())
+    z = tmp / "bomb.pptx"
+    with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as f:
+        f.writestr("ppt/big.bin", b"\0" * (10 * 1024 * 1024))
+    guard_pptx(str(z))                                     # 10MB 는 통과
+    import adreview.extract as E
+    old, E.MAX_PPTX_UNZIPPED = E.MAX_PPTX_UNZIPPED, 1024 * 1024
+    try:
+        try:
+            guard_pptx(str(z))
+            raise AssertionError("압축 폭탄이 통과됨")
+        except ValueError:
+            pass
+    finally:
+        E.MAX_PPTX_UNZIPPED = old
+    import adreview.ocr as O
+    big = tmp / "big.png"
+    Image.new("L", (100, 100)).save(big)
+    old, O.MAX_PIXELS = O.MAX_PIXELS, 50
+    try:
+        try:
+            O.load_bgr(str(big))
+            raise AssertionError("큰 이미지가 통과됨")
+        except ValueError:
+            pass
+    finally:
+        O.MAX_PIXELS = old
+
+
+def test_retention_purge():
+    import os
+    c, st, tmp = make_app()
+    old = st.out_root / "20200101-000000-abcdef"
+    old.mkdir()
+    os.utime(old, (1, 1))
+    new = st.out_root / "20990101-000000-abcdef"
+    new.mkdir()
+    st.retention_days = 30
+    assert st.purge_old() == 1 and not old.exists() and new.exists()
+
+
 if __name__ == "__main__":
     fails = 0
     for n, fn in list(globals().items()):

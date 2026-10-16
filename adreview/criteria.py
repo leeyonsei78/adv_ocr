@@ -47,11 +47,21 @@ def load(key: str, config_dir: Optional[Path] = None) -> dict:
 # ----------------------------------------------------------------------------
 # 검증
 # ----------------------------------------------------------------------------
+_NESTED_QUANT = re.compile(r"\((?:[^()\\]|\\.)*[+*](?:[^()\\]|\\.)*\)\s*(?:[+*]|\{\d+,\d*\})")
+
+
 def _check_regex(label: str, pat: str, errs: list) -> None:
+    """정규식 문법 + 위험 패턴 검사. 중첩 반복 `(a+)+` 같은 패턴은 특정 입력에서 검수가 멈출 수 있어(ReDoS) 거부한다."""
+    if len(pat) > 500:
+        errs.append(f"{label}: 정규식이 너무 깁니다(500자 이하).")
+        return
     try:
         re.compile(pat)
     except re.error as e:
         errs.append(f"{label}: 정규식 오류 “{pat}” ({e})")
+        return
+    if _NESTED_QUANT.search(pat):
+        errs.append(f"{label}: 중첩 반복 “(…+)+” 형태는 검수를 멈추게 할 수 있어 허용하지 않습니다 — “{pat}”")
 
 
 def validate_rules(d: dict) -> list:

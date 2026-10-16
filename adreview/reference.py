@@ -108,7 +108,7 @@ def read_hwp(path: str) -> tuple:
         for entry in sections:
             raw = ole.openstream(entry).read()
             if compressed:
-                raw = zlib.decompress(raw, -15)
+                raw = zlib.decompressobj(-15).decompress(raw, 256 * 1024 * 1024)   # 압축 폭탄 방지(상한 256MB)
             paras.extend(parse_hwp_records(raw))
         if paras:
             return paras, warnings

@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SKIP = {".git", "__pycache__", "output", "_work", ".pytest_cache", "history", "wheels"}
+SKIP = {".venv", ".git", "__pycache__", "output", "_work", ".pytest_cache", "history", "wheels"}
 
 
 def main() -> int:
@@ -46,10 +46,22 @@ def main() -> int:
     shutil.copytree(ROOT, app, ignore=lambda d, names: [n for n in names if n in SKIP or n.endswith(".pyc")])
     for d in ("output", "config/history"):
         (app / d).mkdir(parents=True, exist_ok=True)
+    # 반입 무결성 확인용 해시 (반입 후 `python scripts/verify_bundle.py` 또는 sha256sum -c 로 대조)
+    import hashlib
+    lines = []
+    for f in sorted(out.rglob("*")):
+        if f.is_file() and f.name != "SHA256SUMS.txt":
+            h = hashlib.sha256()
+            with f.open("rb") as fh:
+                for chunk in iter(lambda: fh.read(1 << 20), b""):
+                    h.update(chunk)
+            lines.append(f"{h.hexdigest()}  {f.relative_to(out).as_posix()}")
+    (out / "SHA256SUMS.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (out / "INSTALL.txt").write_text(
+        "0) (권장) 반입 후 SHA256SUMS.txt 로 파일 무결성을 확인한다: python app/scripts/verify_bundle.py\n"
         "1) 이 폴더 전체를 폐쇄망 PC 로 옮긴다.\n"
-        "2) app 폴더에서: scripts\\install_offline.bat (Windows) 또는 sh scripts/install_offline.sh (Linux)\n"
-        "3) 실행: scripts\\run_web.bat / sh scripts/run_web.sh  → 브라우저에서 http://127.0.0.1:8080\n"
+        "2) app 폴더에서 install.bat 실행 (Linux: sh scripts/install_offline.sh)\n"
+        "3) 이후에는 app 폴더의 run.bat 만 실행하면 브라우저에 화면이 열린다 (Linux: sh run.sh)\n"
         "자세한 내용은 app/docs/폐쇄망_설치.md\n", encoding="utf-8")
     print(f"\n완료: {out}\n  wheel {len(list((out / 'wheels').glob('*')))}개 / 앱 폴더 {app}")
     return 0
