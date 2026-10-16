@@ -6,3 +6,5 @@ output/run*/
 output/web/
 config/history/
 wheels/
+.venv/
+config/run.env

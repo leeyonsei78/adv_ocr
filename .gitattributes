@@ -1,0 +1,6 @@
+*.bat text eol=crlf
+*.sh text eol=lf
+models/** binary
+*.pdiparams binary
+*.png binary
+*.pptx binary

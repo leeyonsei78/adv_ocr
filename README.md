@@ -204,3 +204,11 @@ OCR 모델(`models/`)과 오프라인 설치 스크립트(`scripts/`)를 포함�
 
 ## 보안
 자체 보안 점검 결과·조치·운영 권고: [docs/보안_검토.md](docs/보안_검토.md)
+
+
+## Windows 빠른 시작 (GitHub에서 내려받기)
+1. 파이썬 3.10~3.12 (64bit) 설치 — "Add python.exe to PATH" 체크
+2. `git clone https://github.com/leeyonsei78/adv_ocr` (또는 ZIP 다운로드 후 압축 해제)
+3. 폴더의 **`run.bat`** 더블클릭 → 최초 1회 자동 설치(인터넷 필요, 약 300MB) 후 브라우저에 화면이 열림
+
+인터넷이 없는 폐쇄망은 [docs/폐쇄망_설치.md](docs/폐쇄망_설치.md)의 반입 묶음(wheels 포함)을 사용한다.
