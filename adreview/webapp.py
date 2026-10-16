@@ -270,6 +270,23 @@ def create_app(state: State) -> Flask:
                           C.load("master", S.config_dir), config_dir=S.config_dir)
 
     # ------------------------------------------------------------ 검수
+    @app.errorhandler(413)
+    def too_big(e):
+        return jsonify(error=f"파일이 너무 큽니다 (합계 {MAX_UPLOAD // 1048576}MB 이하)."), 413
+
+    @app.errorhandler(Exception)
+    def on_error(e):
+        from werkzeug.exceptions import HTTPException
+        if isinstance(e, HTTPException):
+            return e
+        import traceback
+        traceback.print_exc()                       # run.bat 창에 원인을 남긴다
+        return jsonify(error=f"서버 내부 오류: {type(e).__name__}: {e}"), 500
+
+    @app.get("/healthz")
+    def healthz():
+        return jsonify(ok=True)
+
     @app.get("/")
     def home():
         crit = current_criteria()
@@ -284,8 +301,8 @@ def create_app(state: State) -> Flask:
         body = _crit_panel(crit) + f"""
 <div class="card"><h2>광고물 업로드</h2>
 <form id="f" enctype="multipart/form-data">
-<div class="drop" id="drop">PPTX · 이미지(PNG/JPG 등) · PDF 파일을 끌어다 놓거나 <a href="#" onclick="$('#files').click();return false">선택</a>하세요 (여러 개 가능)
-<input type="file" id="files" name="files" multiple hidden accept=".pptx,.pdf,.png,.jpg,.jpeg,.bmp,.tif,.tiff,.webp,.gif"></div>
+<div class="drop" id="drop">PPTX · 이미지(PNG/JPG 등) · PDF 파일을 여기에 끌어다 놓거나 아래 버튼으로 선택하세요 (여러 개 가능)<br><br>
+<label class="btn sec" style="margin:0;cursor:pointer;color:var(--fg)">파일 선택<input type="file" id="files" name="files" multiple accept=".pptx,.pdf,.png,.jpg,.jpeg,.bmp,.tif,.tiff,.webp,.gif" style="display:none"></label></div>
 <div id="flist" class="small mut" style="margin:6px 0"></div>
 <div class="row c4">
 <div><label>OCR 엔진</label><select name="engine"><option value="paddle" {'selected' if S.engine_name == 'paddle' else ''}>PaddleOCR (기본·정확)</option><option value="tesseract" {'selected' if S.engine_name == 'tesseract' else ''}>Tesseract (경량)</option></select></div>
@@ -303,13 +320,19 @@ inp.onchange=()=>{{picked=[...inp.files];show()}};
 ['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{{ev.preventDefault();drop.classList.add('hl')}}));
 ['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{{ev.preventDefault();drop.classList.remove('hl')}}));
 drop.addEventListener('drop',ev=>{{picked=[...ev.dataTransfer.files];show()}});
+['dragover','drop'].forEach(e=>window.addEventListener(e,ev=>{{ev.preventDefault()}}));   // 영역 밖에 놓아도 브라우저가 파일을 열어 버리지 않게
 $('#user').value=who();
-$('#f').onsubmit=async ev=>{{ev.preventDefault();localStorage.setItem('adr_user',$('#user').value);
+$('#f').onsubmit=async ev=>{{ev.preventDefault();try{{localStorage.setItem('adr_user',$('#user').value)}}catch(e){{}}
  const fd=new FormData();picked.forEach(f=>fd.append('files',f));
  for(const [k,v] of new FormData($('#f')).entries()) if(k!=='files') fd.append(k,v);
- $('#go').disabled=true;$('#msg').textContent='';
- const r=await fetch('/check',{{method:'POST',body:fd}});const j=await r.json();
- if(j.error){{$('#msg').textContent=j.error;$('#go').disabled=false}}else location=j.url}};
+ $('#go').disabled=true;$('#msg').textContent='업로드 중... ('+picked.length+'개)';
+ try{{
+  const r=await fetch('/check',{{method:'POST',body:fd}});
+  const t=await r.text();let j;try{{j=JSON.parse(t)}}catch(e){{j=null}}
+  if(r.status===401){{location='/login';return}}
+  if(!j){{$('#msg').textContent='서버 응답 오류 (HTTP '+r.status+'): '+t.replace(/<[^>]+>/g,' ').slice(0,300);$('#go').disabled=false;return}}
+  if(j.error){{$('#msg').textContent=j.error;$('#go').disabled=false}}else location=j.url
+ }}catch(e){{$('#msg').textContent='서버에 연결하지 못했습니다: '+e+'  (run.bat 창이 켜져 있는지 확인하세요)';$('#go').disabled=false}}}};
 </script>"""
         return page("검수", "check", body)
 
