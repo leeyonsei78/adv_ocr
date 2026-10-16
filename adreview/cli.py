@@ -73,6 +73,11 @@ def cmd_check(a) -> int:
         print(f"[경고] 기준 문서 색인을 찾을 수 없어 관련 조항 검색을 건너뜁니다: {a.reference_index}")
     engine = _engine_from_args(a)
     types = [t.strip() for t in a.product_type.split(",")] if a.product_type else None
+    cl_cfg = load_yaml(a.checklist) if a.checklist and os.path.exists(a.checklist) else None
+    today = None
+    if a.today:
+        import datetime as _dt
+        today = _dt.date.fromisoformat(a.today)
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -89,10 +94,15 @@ def cmd_check(a) -> int:
         except Exception as e:
             print(f"  [오류] {f}: {e}")
             continue
-        res = check_file(pages, rules, master, ref, product_id=a.product, product_types=types)
+        res = check_file(pages, rules, master, ref, product_id=a.product, product_types=types,
+                         checklist_cfg=cl_cfg, today=today)
         results.append(res)
         n = sum(1 for x in res.findings if x.status == "review")
         print(f"  → 검토 필요 {n}건 (페이지 {len(pages)}개)")
+        if res.checklist:
+            from .checklist import summarize
+            sm = summarize(res.checklist)
+            print("  → 점검표 " + " ".join(f"{k}{v}" for k, v in sm.items()))
 
     if not results:
         print("처리된 파일이 없습니다.")
@@ -138,6 +148,9 @@ def main(argv=None) -> int:
     p3.add_argument("--product", help="상품 마스터의 product_id (미지정 시 키워드로 자동 식별)")
     p3.add_argument("--product-type", help="상품군 콤마 구분. 예) renewable,savings")
     p3.add_argument("--out", default=str(ROOT / "output" / "run"))
+    p3.add_argument("--checklist", default=str(ROOT / "config" / "checklist.yaml"),
+                    help="광고심의점검표 정의(yaml). 빈 값이면 점검표 판정을 건너뜁니다")
+    p3.add_argument("--today", help="광고 유효기간 비교 기준일 YYYY-MM-DD (기본: 오늘)")
     p3.add_argument("--keep-work", action="store_true", help="중간 산출물(렌더링 이미지 등) 보존")
     add_ocr_args(p3)
     p3.set_defaults(fn=cmd_check)

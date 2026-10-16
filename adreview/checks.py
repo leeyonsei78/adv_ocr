@@ -580,11 +580,12 @@ class FileResult:
     products: list
     product_types: list
     skipped_rules: list
+    checklist: list = field(default_factory=list)      # 광고심의점검표 판정 (checklist.ChecklistRow)
 
 
 def check_file(pages: list, rules: dict, master: dict, ref_index=None,
                product_id: Optional[str] = None, product_types: Optional[list] = None,
-               related_k: int = 3) -> FileResult:
+               related_k: int = 3, checklist_cfg: Optional[dict] = None, today=None) -> FileResult:
     products = detect_products(pages, master, product_id)
     types = set(product_types or [])
     for p in products:
@@ -614,6 +615,10 @@ def check_file(pages: list, rules: dict, master: dict, ref_index=None,
 
     findings.sort(key=lambda f: (f.status != "review", ["high", "medium", "low", "info"].index(f.severity)
                                  if f.severity in ("high", "medium", "low", "info") else 9))
+    rows = []
+    if checklist_cfg:
+        from .checklist import evaluate_checklist
+        rows = evaluate_checklist(checklist_cfg, pages, findings, skipped, types, types_known, products, today)
     return FileResult(file=pages[0].file if pages else "", pages=pages, findings=findings,
                       products=[p["product_id"] for p in products], product_types=sorted(types),
-                      skipped_rules=skipped)
+                      skipped_rules=skipped, checklist=rows)

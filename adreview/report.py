@@ -95,9 +95,38 @@ th{background:#f3f3f3}
 .imgs img{max-width:100%;border:1px solid #ccc;margin:6px 0}
 details{margin:6px 0} summary{cursor:pointer;font-weight:600}
 .small{color:#666;font-size:12px}
+.mk{display:inline-block;min-width:26px;text-align:center;font-weight:700;border-radius:4px;padding:1px 6px;color:#fff}
+.mk-o{background:#16a34a}.mk-x{background:#dc2626}.mk-t{background:#ea8a00}.mk-n{background:#999}.mk-q{background:#2563eb}
+.chk td:nth-child(1){white-space:nowrap} .chk td:nth-child(4){text-align:center}
 td:nth-child(1),td:nth-child(2){white-space:nowrap}
 td:nth-child(3){min-width:180px}
 """
+
+
+_MK_CLASS = {"○": "mk-o", "×": "mk-x", "△": "mk-t", "-": "mk-n", "?": "mk-q"}
+
+
+def _checklist_html(rows: list) -> str:
+    from .checklist import MARK_KO, summarize
+    sm = summarize(rows)
+    out = ["<h3>광고심의점검표 (변액보험 이외 보험) — 자동 판정 초안</h3>",
+           "<p class='small'>○ 적합 · × 부적합 · △ 미흡 · - 해당사항 없음 · ? 자동판정 불가(담당자 확인). "
+           "× 는 문구 누락/금지 표현 검출이며 OCR 누락일 수 있고, ○ 는 자동 패턴이 포착한 범위 안에서만 의미가 있습니다.</p>",
+           "<div class='sum'>" + "".join(
+               f"<span class='{_MK_CLASS[m]}'>{m} {MARK_KO[m]} {n}</span>" for m, n in sm.items()) + "</div>",
+           "<table class='chk'><tr><th>No.</th><th>구분</th><th>점검 항목</th><th>확인</th><th>자동 판정 근거 / 비고</th><th>규정</th></tr>"]
+    last = None
+    for r in rows:
+        grp = r.group if r.group != last else ""
+        last = r.group
+        ev = f"<div class='small'>{_esc(' · '.join(r.evidence[:4]))}</div>" if r.evidence else ""
+        sample = f"<details><summary class='small'>예시 문구</summary><div class='rel'>{_esc(r.sample)}</div></details>" if r.sample else ""
+        kind = "" if r.mode == "auto" else "<div class='small'>(담당자 확인 항목)</div>"
+        out.append(f"<tr><td>{_esc(r.no)}</td><td>{_esc(grp)}</td><td>{_esc(r.title)}{sample}</td>"
+                   f"<td><span class='mk {_MK_CLASS[r.mark]}'>{_esc(r.mark)}</span></td>"
+                   f"<td>{_esc(r.detail)}{ev}{kind}</td><td class='small'>{_esc(r.basis)}</td></tr>")
+    out.append("</table>")
+    return "".join(out)
 
 
 def write_html(results: list, out_dir: str, image_maps: dict, title: str = "광고물 1차 점검 리포트") -> str:
@@ -123,6 +152,9 @@ def write_html(results: list, out_dir: str, image_maps: dict, title: str = "광�
         parts.append(f"<p class='small'>{_esc(meta)}</p>")
         if res.skipped_rules:
             parts.append(f"<p class='small'>적용 제외 룰: {_esc('; '.join(res.skipped_rules))}</p>")
+
+        if res.checklist:
+            parts.append(_checklist_html(res.checklist))
 
         parts.append("<h3>검토 필요 항목</h3>")
         if not review:
@@ -190,6 +222,7 @@ def write_json(results: list, out_dir: str) -> str:
         data.append({
             "file": r.file, "products": r.products, "product_types": r.product_types,
             "skipped_rules": r.skipped_rules,
+            "checklist": [c.to_dict() for c in r.checklist],
             "findings": [f.to_dict() for f in r.findings],
             "pages": [{"page": p.page_id, "warnings": p.warnings,
                        "blocks": [b.to_dict() for b in p.blocks]} for p in r.pages],
@@ -228,6 +261,34 @@ def write_xlsx(results: list, out_dir: str) -> str:
         for c in row:
             c.alignment = Alignment(wrap_text=True, vertical="top")
     ws.freeze_panes = "A2"
+    if any(r.checklist for r in results):
+        _checklist_sheet(wb, results)
     path = os.path.join(out_dir, "result.xlsx")
     wb.save(path)
     return path
+
+
+def _checklist_sheet(wb, results: list) -> None:
+    """협회 제출양식(No./점검항목/확인/비고/예시 문구)에 가깝게 점검표 시트를 만든다."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from .checklist import MARK_KO
+    ws = wb.create_sheet("광고심의점검표")
+    ws.append(["※ 적합 ○ / 부적합 × / 미흡 △ / 해당사항 없음 - / 자동판정 불가 ?  — 자동 판정은 초안이며 담당자가 확인·수정해야 합니다."])
+    ws.append(["파일", "No.", "구분", "점검 항목", "확인(자동)", "판정 의미", "자동 판정 근거", "비고(규정)", "예시 문구", "담당자 확인", "담당자 의견"])
+    for c in ws[2]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="333333")
+    fills = {"○": "DCFCE7", "×": "FDE2E2", "△": "FFF1D6", "?": "E3EDFF", "-": "EEEEEE"}
+    for r in results:
+        for c in r.checklist:
+            ws.append([r.file, c.no, c.group, c.title, c.mark, MARK_KO[c.mark],
+                       c.detail + ((" | " + " · ".join(c.evidence[:4])) if c.evidence else ""),
+                       c.basis, c.sample, "", ""])
+            ws.cell(ws.max_row, 5).fill = PatternFill("solid", fgColor=fills.get(c.mark, "FFFFFF"))
+            ws.cell(ws.max_row, 5).font = Font(bold=True)
+    for i, w in enumerate([22, 7, 12, 40, 10, 12, 70, 18, 50, 12, 24]):
+        ws.column_dimensions[chr(65 + i)].width = w
+    for row in ws.iter_rows(min_row=3):
+        for c in row:
+            c.alignment = Alignment(wrap_text=True, vertical="top")
+    ws.freeze_panes = "A3"
