@@ -137,3 +137,8 @@ python -m adreview ocr ad.png --engine paddle \
 - 룰(`rules.yaml`)과 상품 마스터(`product_master.yaml`)의 품질이 곧 점검 품질입니다. 현재 파일의 값은 **구조를 보여주는 예시**입니다.
 - PPT 내 도형 안 글자 · 표 · 그룹은 처리하지만 SmartArt·차트 내부 글자는 렌더링 OCR 에 의존합니다. `.ppt`(구형)는 `.pptx` 로 변환 필요.
 - 대비(글자색/배경색), 폰트 굵기, 영상·애니메이션 문구는 점검하지 않습니다.
+
+### 신규 이미지 블라인드 비교 (`tests/make_blind.py`, `tests/blind_compare.py`, 결과: `output/blind/report.md`)
+시드 난수로 문구·수치·폰트·배경을 새로 조합한 광고 24장(폭 600/450/340/260px)을, 정답을 보지 않은 상태에서 LLM(Claude 비전)이 직접 판독하고 OCR 2종과 같은 채점 코드로 비교했습니다.
+LLM 줄 유사도 96% / PaddleOCR 89% / Tesseract 80%, 놓친 위반 0 / 1 / 7건, 오탐 8 / 30 / 29건. 폭 340px 이하에서 OCR 이 급격히 약해집니다.
+(LLM 은 폐쇄망 운영 대상이 아니라 참고 기준선입니다. 캔버스 밖으로 잘리거나 띠에 가려진 줄 33개는 정답에서 제외했습니다.)
