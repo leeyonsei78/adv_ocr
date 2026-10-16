@@ -154,7 +154,13 @@ def check_required(pages: list, rules: dict, active_types: set, types_known: boo
 
         # 못 찾았을 때: 유사 문구(OCR 오인식 가능성) 탐색
         fuzzy_hit = None
-        for kw in rule.get("fuzzy", []) or []:
+        # 약한 패턴: 문구는 판독 못 했지만 번호 형식(예: 25-000522-2028-3)의 글자열이 있는 경우
+        for wp in rule.get("weak_any_of", []) or []:
+            wm = re.search(wp, whole)
+            if wm:
+                fuzzy_hit = ("번호 형식", wm.group(0))
+                break
+        for kw in ([] if fuzzy_hit else (rule.get("fuzzy", []) or [])):
             hit = _fuzzy_find(whole, squash(kw))
             if hit:
                 fuzzy_hit = (kw, hit)
@@ -182,7 +188,7 @@ def check_required(pages: list, rules: dict, active_types: set, types_known: boo
 # ----------------------------------------------------------------------------
 _CATEGORY_KO = {
     "exaggeration": "과장", "absolute": "단정·절대", "comparison": "비교",
-    "guarantee": "보장·확정", "urgency": "조급 유발",
+    "guarantee": "보장·확정", "urgency": "조급 유발", "benefit": "특별이익·경품",
 }
 
 
@@ -191,6 +197,10 @@ def check_prohibited(page: AdPage, groups: list, rules: dict) -> list:
     for rule in rules.get("prohibited_expressions", []):
         pat = re.compile(rule["pattern"])
         exc = [re.compile(e) for e in rule.get("exceptions", []) or []]
+        # downgrade_if: 같은 페이지에 근거·조건 표기(각주 등)가 있으면 중요도를 낮추고 '근거 표기 있음'을 알린다
+        dg = re.compile(rule["downgrade_if"]) if rule.get("downgrade_if") else None
+        page_text = "".join(g.text for g in groups)
+        dg_hit = dg.search(page_text) if dg else None
         for g in groups:
             for m in pat.finditer(g.text):
                 window = g.text[max(0, m.start() - 6): m.end() + 8]
@@ -203,10 +213,14 @@ def check_prohibited(page: AdPage, groups: list, rules: dict) -> list:
                 blk = g.block_at(m.start())
                 img, bb = _loc(blk)
                 cat = _CATEGORY_KO.get(rule.get("category", ""), rule.get("category", ""))
+                sev, extra = rule.get("severity", "medium"), ""
+                if dg_hit:
+                    sev = "low"
+                    extra = f"  | 근거·조건 표기 있음(“{dg_hit.group(0)}”) — 내용이 충분한지 확인"
                 findings.append(Finding(
-                    rule_id=rule["id"], category="prohibited", severity=rule.get("severity", "medium"),
+                    rule_id=rule["id"], category="prohibited", severity=sev,
                     title=f"{cat} 표현 의심: “{m.group(0)}”",
-                    detail=f"{rule.get('note', '')}  | 문맥: {_snippet(blk)}",
+                    detail=f"{rule.get('note', '')}{extra}  | 문맥: {_snippet(blk)}",
                     page=page.page_id, matched_text=m.group(0), image=img, bbox=bb,
                     basis=rule.get("basis", ""), query=f"{m.group(0)} {rule.get('note', '')}"))
     return _dedupe(findings)

@@ -128,6 +128,38 @@ def test_split_and_search():
     assert idx.search("예금자보호 안내", k=1, min_score=0.1)[0]["title"].startswith("제3조")
 
 
+# ---------------- 웹 캡처 검수에서 보강한 룰 ----------------
+def _rev(res, rid):
+    return [f for f in res.findings if f.rule_id == rid and f.status == "review"]
+
+
+def test_target_limited_everyone_is_not_flagged():
+    assert not _rev(check_file([page("대한민국 청년이라면 누구나!")], RULES, {}), "BAN-002")
+    assert _rev(check_file([page("누구나 100% 받습니다")], RULES, {}), "BAN-002")
+
+
+def test_ranking_with_source_footnote_is_downgraded():
+    with_src = check_file([page("환급률 1위", "*26.1월 보험다모아 상품 기준")], RULES, {})
+    f = _rev(with_src, "BAN-001")
+    assert f and f[0].severity == "low" and "근거" in f[0].detail
+    no_src = _rev(check_file([page("환급률 1위")], RULES, {}), "BAN-001")
+    assert no_src and no_src[0].severity == "high"
+
+
+def test_new_expression_rules():
+    res = check_file([page("평생 더 많은 연금", "따박따박 돌려받아요", "지금 가입하시면 네이버페이 3만원 증정", "BEST 치아보험")], RULES, {})
+    ids = {f.rule_id for f in res.findings if f.status == "review"}
+    assert {"BAN-009", "BAN-010", "BAN-011", "BAN-012"} <= ids
+
+
+def test_review_number_shape_gives_uncertain_not_missing():
+    res = check_file([page("흥국생명 통합보험", "25-FA1-000016(2025-2026)")], RULES, {})
+    r1 = [f for f in res.findings if f.rule_id == "REQ-001"][0]
+    assert r1.status == "review" and "불확실" in r1.title and r1.severity != "high"
+    res2 = check_file([page("준법감시필 25-FA1-000016")], RULES, {})
+    assert [f for f in res2.findings if f.rule_id == "REQ-001"][0].status == "ok"
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in list(globals().items()):

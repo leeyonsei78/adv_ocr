@@ -95,6 +95,7 @@ th{background:#f3f3f3}
 .imgs img{max-width:100%;border:1px solid #ccc;margin:6px 0}
 details{margin:6px 0} summary{cursor:pointer;font-weight:600}
 .small{color:#666;font-size:12px}
+.idx{display:flex;flex-wrap:wrap;gap:10px}.idx a{width:190px;font-size:12px;color:#222;text-decoration:none;border:1px solid #ddd;border-radius:6px;padding:6px}.idx img{width:100%;display:block;margin-bottom:4px}
 .mk{display:inline-block;min-width:26px;text-align:center;font-weight:700;border-radius:4px;padding:1px 6px;color:#fff}
 .mk-o{background:#16a34a}.mk-x{background:#dc2626}.mk-t{background:#ea8a00}.mk-n{background:#999}.mk-q{background:#2563eb}
 .chk td:nth-child(1){white-space:nowrap} .chk td:nth-child(4){text-align:center}
@@ -129,18 +130,69 @@ def _checklist_html(rows: list) -> str:
     return "".join(out)
 
 
+
+def _data_uri(path: str, max_w: int = 1400, quality: int = 82) -> str:
+    """이미지를 리포트 단독 열람이 가능하도록 JPEG data URI 로 변환."""
+    import base64, io
+    try:
+        im = Image.open(path).convert("RGB")
+        if im.width > max_w:
+            im = im.resize((max_w, round(im.height * max_w / im.width)))
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=quality)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception:
+        return ""
+
+
+def _source_images_html(res, out_dir: str, image_maps: dict) -> str:
+    out = ["<h3>검수 대상 광고물 (박스 = 검토 필요 지점)</h3><div class='imgs'>"]
+    n = 0
+    for page in res.pages:
+        for key in page.images:
+            fn = image_maps.get((page.page_id, key))
+            path = os.path.join(out_dir, "images", fn) if fn else page.images[key]
+            uri = _data_uri(path)
+            if not uri:
+                continue
+            n += 1
+            out.append(f"<div class='small'>{_esc(page.page_id)} · {_esc(key)}</div><img src='{uri}'>")
+    out.append("</div>")
+    return "".join(out) if n else ""
+
+
+def _index_html(results: list, out_dir: str, image_maps: dict) -> str:
+    out = ["<h3>검수한 광고물 목록</h3><div class='idx'>"]
+    for i, res in enumerate(results):
+        thumb = ""
+        for page in res.pages:
+            for key in page.images:
+                uri = _data_uri(page.images[key], max_w=360, quality=70)
+                if uri:
+                    thumb = f"<img src='{uri}'>"
+                    break
+            if thumb:
+                break
+        cnt = sum(1 for f in res.findings if f.status == "review")
+        out.append(f"<a href='#f{i}'>{thumb}<span>{_esc(res.file)}<br><small>검토 필요 {cnt}건</small></span></a>")
+    out.append("</div>")
+    return "".join(out)
+
+
 def write_html(results: list, out_dir: str, image_maps: dict, title: str = "광고물 1차 점검 리포트") -> str:
     parts = [f"<!doctype html><html lang='ko'><head><meta charset='utf-8'><title>{_esc(title)}</title><style>{_CSS}</style></head><body>",
              f"<h1>{_esc(title)}</h1>",
              "<div class='note'><b>이 리포트는 심의 담당자를 돕는 1차 점검 결과입니다.</b> "
              "‘의심’으로 표시된 항목은 위반 확정이 아니며, 누락 판정은 OCR 한계로 오탐일 수 있습니다. "
              "최종 판단은 반드시 담당자가 원본과 규정을 대조해 내려야 합니다.</div>"]
+    if len(results) > 1:
+        parts.append(_index_html(results, out_dir, image_maps))
     for res in results:
         review = [f for f in res.findings if f.status == "review"]
         oks = [f for f in res.findings if f.status == "ok"]
         infos = [f for f in res.findings if f.status == "info"]
         cnt = {s: sum(1 for f in review if f.severity == s) for s in ("high", "medium", "low")}
-        parts.append(f"<h2>{_esc(res.file)}</h2>")
+        parts.append(f"<h2 id='f{results.index(res)}'>{_esc(res.file)}</h2>")
         parts.append("<div class='sum'>"
                      f"<span class='high'>높음 {cnt['high']}</span><span class='medium'>중간 {cnt['medium']}</span>"
                      f"<span class='low'>낮음 {cnt['low']}</span><span class='ok'>확인됨 {len(oks)}</span></div>")
@@ -152,6 +204,8 @@ def write_html(results: list, out_dir: str, image_maps: dict, title: str = "광�
         parts.append(f"<p class='small'>{_esc(meta)}</p>")
         if res.skipped_rules:
             parts.append(f"<p class='small'>적용 제외 룰: {_esc('; '.join(res.skipped_rules))}</p>")
+
+        parts.append(_source_images_html(res, out_dir, image_maps))
 
         if res.checklist:
             parts.append(_checklist_html(res.checklist))
@@ -173,20 +227,6 @@ def write_html(results: list, out_dir: str, image_maps: dict, title: str = "광�
                     f"<td>{_esc(f.rule_id)}</td><td>{_esc(f.title)}</td><td>{_esc(f.page)}</td>"
                     f"<td>{_esc(f.detail)}{basis}{rel}</td></tr>")
             parts.append("</table>")
-
-        # 위치 표시 이미지
-        shown = False
-        for page in res.pages:
-            for key in page.images:
-                fn = image_maps.get((page.page_id, key))
-                has = any(f.bbox and f.image == key and f.page == page.page_id and f.status == "review" for f in res.findings)
-                if fn and has:
-                    if not shown:
-                        parts.append("<h3>위치 표시 (박스 = 검토 필요 지점)</h3><div class='imgs'>")
-                        shown = True
-                    parts.append(f"<div class='small'>{_esc(page.page_id)} · {_esc(key)}</div><img src='images/{_esc(fn)}'>")
-        if shown:
-            parts.append("</div>")
 
         if oks:
             parts.append("<details><summary>확인된 항목 (필수 문구·수치 일치)</summary><table><tr><th>룰</th><th>항목</th><th>위치</th><th>상세</th></tr>")

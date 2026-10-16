@@ -257,6 +257,10 @@ class PaddleOCREngine(OCREngine):
         self.pad = int(opts.pop("pad", 4))
         self.det_max_side = int(opts.pop("det_max_side", 2000))
         self.rec_batch = int(opts.pop("rec_batch", 8))
+        # 작은 글씨(푸터·각주·심의필) 보강: 가로가 small_text_below 픽셀 미만이면 2배 확대본을 한 번 더 인식해 합친다.
+        # 웹 화면 캡처(약 1500px)처럼 해상도가 낮은 이미지에서 심의필 번호 등이 누락되던 문제 대응. 0 이면 끔.
+        self.small_text_below = int(opts.pop("small_text_below", 2400))
+        self.small_text_scale = float(opts.pop("small_text_scale", 2.0))
         det_name = opts.pop("det_model_name", "PP-OCRv5_mobile_det")
         rec_name = opts.pop("rec_model_name", {"korean": "korean_PP-OCRv5_mobile_rec"}.get(lang, "PP-OCRv5_server_rec"))
         det_dir, rec_dir = opts.pop("det_model_dir", None), opts.pop("rec_model_dir", None)
@@ -299,9 +303,7 @@ class PaddleOCREngine(OCREngine):
             crop = np.rot90(crop)
         return crop
 
-    def recognize(self, image_path: str) -> list:
-        img = load_bgr(image_path)
-        H, W = img.shape[:2]
+    def _recognize_img(self, img, scale: float = 1.0) -> list:
         det = self._res(next(iter(self._det.predict(img, limit_side_len=self.det_max_side, limit_type="max"))))
         boxes, crops = [], []
         for poly in det.get("dt_polys", []):
@@ -311,7 +313,7 @@ class PaddleOCREngine(OCREngine):
             crop = self._crop_poly(img, pts)
             if crop is None or crop.shape[0] < 4 or crop.shape[1] < 4:
                 continue
-            boxes.append((float(x0), float(y0), float(x1), float(y1)))
+            boxes.append((float(x0) / scale, float(y0) / scale, float(x1) / scale, float(y1) / scale))
             crops.append(crop)
         blocks = []
         if crops:
@@ -321,8 +323,17 @@ class PaddleOCREngine(OCREngine):
                 if not text or score < self.min_conf or not _HAS_CONTENT.search(text):
                     continue
                 blocks.append(TextBlock(text=text, bbox=b, conf=score * 100, source="ocr",
-                                        height_px=b[3] - b[1], variant="paddle"))
-        return sort_reading_order(blocks)
+                                        height_px=b[3] - b[1], variant="paddle" if scale == 1.0 else "paddle-x2"))
+        return blocks
+
+    def recognize(self, image_path: str) -> list:
+        img = load_bgr(image_path)
+        H, W = img.shape[:2]
+        groups = [self._recognize_img(img)]
+        if self.small_text_below and W < self.small_text_below and self.small_text_scale > 1:
+            big = cv2.resize(img, None, fx=self.small_text_scale, fy=self.small_text_scale, interpolation=cv2.INTER_CUBIC)
+            groups.append(self._recognize_img(big, self.small_text_scale))
+        return sort_reading_order(merge_blocks(groups) if len(groups) > 1 else groups[0])
 
 
 def build_engine(name: str = "paddle", opts: Optional[dict] = None) -> OCREngine:
