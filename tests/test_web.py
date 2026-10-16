@@ -288,6 +288,14 @@ def test_retention_purge():
     assert st.purge_old() == 1 and not old.exists() and new.exists()
 
 
+def test_helper_script_loaded_before_page_scripts():
+    """공통 JS($, post, who)가 페이지 스크립트보다 먼저 로드돼야 업로드·편집 버튼이 동작한다 (실제로 한 번 깨졌던 부분)."""
+    c, st, tmp = make_app()
+    for url in ("/", "/criteria?t=rules", "/criteria?t=checklist", "/criteria?t=master", "/criteria?t=history"):
+        h = c.get(url).get_data(as_text=True)
+        assert h.index("const $=") < h.index("<main>") and h.index("const $=") < h.index("<script>", h.index("<main>")), url
+
+
 if __name__ == "__main__":
     fails = 0
     for n, fn in list(globals().items()):

@@ -75,18 +75,19 @@ table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--li
 pre.log{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px;max-height:240px;overflow:auto;font-size:12px;white-space:pre-wrap}
 iframe{width:100%;height:78vh;border:1px solid var(--line);border-radius:8px;background:#fff}
 .diff{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;white-space:pre-wrap}.diff .a{background:#16a34a22}.diff .d{background:#dc262622}
-</style></head><body>
+</style>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+function who(){return localStorage.getItem('adr_user')||''}
+async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});return r.json()}
+</script></head><body>
 <header><b>보험 광고 1차 점검</b><nav>
 <a href="/" class="{{ 'on' if tab=='check' }}">검수</a>
 <a href="/jobs" class="{{ 'on' if tab=='jobs' }}">검수 이력</a>
 <a href="/criteria" class="{{ 'on' if tab=='criteria' }}">검수 기준 관리</a>
 </nav><span class="mut small" style="margin-left:auto">{% if who %}{{ who }} ({{ role }}) · <a href="/logout">로그아웃</a> · {% endif %}1차 점검 보조 도구 — 최종 판단은 담당자</span></header>
 <main>{{ body|safe }}</main>
-<script>
-const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-function who(){return localStorage.getItem('adr_user')||''}
-async function post(url,data){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});return r.json()}
-</script></body></html>"""
+</body></html>"""
 
 
 def page(title: str, tab: str, body: str) -> str:
