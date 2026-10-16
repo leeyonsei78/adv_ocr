@@ -95,6 +95,7 @@ th{background:#f3f3f3}
 .imgs img{max-width:100%;border:1px solid #ccc;margin:6px 0}
 details{margin:6px 0} summary{cursor:pointer;font-weight:600}
 .small{color:#666;font-size:12px}
+.crit{border:1px solid #bcd0f5;background:#f4f8ff;border-radius:8px;padding:12px 16px;margin:14px 0}
 .idx{display:flex;flex-wrap:wrap;gap:10px}.idx a{width:190px;font-size:12px;color:#222;text-decoration:none;border:1px solid #ddd;border-radius:6px;padding:6px}.idx img{width:100%;display:block;margin-bottom:4px}
 .mk{display:inline-block;min-width:26px;text-align:center;font-weight:700;border-radius:4px;padding:1px 6px;color:#fff}
 .mk-o{background:#16a34a}.mk-x{background:#dc2626}.mk-t{background:#ea8a00}.mk-n{background:#999}.mk-q{background:#2563eb}
@@ -179,12 +180,50 @@ def _index_html(results: list, out_dir: str, image_maps: dict) -> str:
     return "".join(out)
 
 
-def write_html(results: list, out_dir: str, image_maps: dict, title: str = "광고물 1차 점검 리포트") -> str:
+def _criteria_html(c: dict) -> str:
+    """리포트 상단: 이번 검수에 적용된 기준(버전·파일·룰 목록)을 보여 준다."""
+    if not c:
+        return ""
+    cnt = c["counts"]
+    last = c.get("last_change")
+    lc = f" · 최근 변경: {_esc(last['time'])} {_esc(last.get('user', ''))} {_esc(last.get('note', ''))}" if last else ""
+    out = ["<div class='crit'><h3 style='margin-top:0'>이번 검수에 적용된 기준</h3>",
+           f"<p><b>기준 버전 {_esc(c['version'])}</b>{lc}<br>"
+           f"필수 문구 {cnt['required']}개 · 금지/주의 표현 {cnt['prohibited']}개 · 점검표 {cnt['checklist']}항목 · 상품 마스터 {cnt['products']}개"
+           + (f" · <span style='color:#b45309'>비활성 {cnt['disabled']}개(검수 제외)</span>" if cnt["disabled"] else "") + "</p>",
+           "<table><tr><th>기준 파일</th><th>이름</th><th>버전(해시)</th><th>수정 시각</th></tr>"]
+    for f in c["files"]:
+        out.append(f"<tr><td>{_esc(f['file'])}</td><td>{_esc(f['label'])}</td><td>{_esc(f['sha'])}</td><td>{_esc(f['modified'])}</td></tr>")
+    out.append("</table>")
+
+    def rows(items, kind):
+        h = ["<table><tr><th>ID</th><th>내용</th><th>중요도</th><th>검출 패턴</th><th>상태</th></tr>"]
+        for r in items:
+            st = "적용" if r["enabled"] else "<b style='color:#b45309'>비활성</b>"
+            nm = r.get("name") or ""
+            h.append(f"<tr><td>{_esc(r['id'])}</td><td>{_esc(nm)}</td><td>{SEV_KO.get(r['severity'], r['severity'])}</td>"
+                     f"<td class='small'>{_esc(' | '.join(r['patterns'])[:240])}</td><td>{st}</td></tr>")
+        h.append("</table>")
+        return "".join(h)
+
+    out.append("<details><summary>필수 문구 룰 목록</summary>" + rows(c["required"], "req") + "</details>")
+    out.append("<details><summary>금지·주의 표현 룰 목록</summary>" + rows(c["prohibited"], "ban") + "</details>")
+    out.append("<details><summary>광고심의점검표 항목 목록</summary><table><tr><th>No.</th><th>구분</th><th>점검 항목</th><th>판정 방식</th><th>상태</th></tr>" +
+               "".join(f"<tr><td>{_esc(i['num'])}</td><td>{_esc(i['group'])}</td><td>{_esc(i['title'])}</td><td>{_esc(i['type'])}</td>"
+                       f"<td>{'적용' if i['enabled'] else '<b style=color:#b45309>비활성</b>'}</td></tr>" for i in c["checklist"]) +
+               "</table></details>")
+    out.append("<p class='small'>기준은 사내 규정에 맞게 담당자가 관리합니다. 기준이 바뀌면 버전이 바뀌므로, "
+               "결과를 보관할 때 이 버전을 함께 기록하세요.</p></div>")
+    return "".join(out)
+
+
+def write_html(results: list, out_dir: str, image_maps: dict, title: str = "광고물 1차 점검 리포트", criteria: dict = None) -> str:
     parts = [f"<!doctype html><html lang='ko'><head><meta charset='utf-8'><title>{_esc(title)}</title><style>{_CSS}</style></head><body>",
              f"<h1>{_esc(title)}</h1>",
              "<div class='note'><b>이 리포트는 심의 담당자를 돕는 1차 점검 결과입니다.</b> "
              "‘의심’으로 표시된 항목은 위반 확정이 아니며, 누락 판정은 OCR 한계로 오탐일 수 있습니다. "
-             "최종 판단은 반드시 담당자가 원본과 규정을 대조해 내려야 합니다.</div>"]
+             "최종 판단은 반드시 담당자가 원본과 규정을 대조해 내려야 합니다.</div>",
+             _criteria_html(criteria)]
     if len(results) > 1:
         parts.append(_index_html(results, out_dir, image_maps))
     for res in results:
@@ -256,7 +295,7 @@ def write_html(results: list, out_dir: str, image_maps: dict, title: str = "광�
     return path
 
 
-def write_json(results: list, out_dir: str) -> str:
+def write_json(results: list, out_dir: str, criteria: dict = None) -> str:
     data = []
     for r in results:
         data.append({
@@ -269,10 +308,13 @@ def write_json(results: list, out_dir: str) -> str:
         })
     path = os.path.join(out_dir, "result.json")
     Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    if criteria:
+        Path(os.path.join(out_dir, "criteria.json")).write_text(
+            json.dumps(criteria, ensure_ascii=False, indent=1), encoding="utf-8")
     return path
 
 
-def write_xlsx(results: list, out_dir: str) -> str:
+def write_xlsx(results: list, out_dir: str, criteria: dict = None) -> str:
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Font, PatternFill
 
@@ -303,9 +345,36 @@ def write_xlsx(results: list, out_dir: str) -> str:
     ws.freeze_panes = "A2"
     if any(r.checklist for r in results):
         _checklist_sheet(wb, results)
+    if criteria:
+        _criteria_sheet(wb, criteria)
     path = os.path.join(out_dir, "result.xlsx")
     wb.save(path)
     return path
+
+
+def _criteria_sheet(wb, c: dict) -> None:
+    from openpyxl.styles import Alignment, Font, PatternFill
+    ws = wb.create_sheet("적용 기준")
+    ws.append([f"기준 버전 {c['version']}"])
+    ws["A1"].font = Font(bold=True, size=12)
+    for f in c["files"]:
+        ws.append([f["label"], f["file"], f["sha"], f["modified"]])
+    ws.append([])
+    ws.append(["구분", "ID", "내용", "중요도", "검출 패턴", "상태"])
+    for cell in ws[ws.max_row]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="333333")
+    for kind, items in (("필수 문구", c["required"]), ("금지·주의 표현", c["prohibited"])):
+        for r in items:
+            ws.append([kind, r["id"], r.get("name") or "", SEV_KO.get(r["severity"], r["severity"]),
+                       " | ".join(r["patterns"]), "적용" if r["enabled"] else "비활성"])
+    for i in c["checklist"]:
+        ws.append(["점검표", i["num"], f"{i['group']} / {i['title']}", "", i["type"], "적용" if i["enabled"] else "비활성"])
+    for col, w in zip("ABCDEF", (16, 14, 44, 10, 70, 10)):
+        ws.column_dimensions[col].width = w
+    for row in ws.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
 
 
 def _checklist_sheet(wb, results: list) -> None:

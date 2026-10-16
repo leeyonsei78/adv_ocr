@@ -105,6 +105,9 @@ def check_required(pages: list, rules: dict, active_types: set, types_known: boo
     whole = "".join(g.text for _, g in all_groups)
 
     for rule in rules.get("required_phrases", []):
+        if rule.get("enabled", True) is False:
+            skipped.append(f"{rule['id']} {rule.get('name', '')} (기준에서 비활성화됨)")
+            continue
         applies = set(rule.get("applies_to") or [])
         sev = rule.get("severity", "medium")
         note = ""
@@ -195,6 +198,8 @@ _CATEGORY_KO = {
 def check_prohibited(page: AdPage, groups: list, rules: dict) -> list:
     findings, seen = [], set()
     for rule in rules.get("prohibited_expressions", []):
+        if rule.get("enabled", True) is False:
+            continue
         pat = re.compile(rule["pattern"])
         exc = [re.compile(e) for e in rule.get("exceptions", []) or []]
         # downgrade_if: 같은 페이지에 근거·조건 표기(각주 등)가 있으면 중요도를 낮추고 '근거 표기 있음'을 알린다

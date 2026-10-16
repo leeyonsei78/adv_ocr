@@ -20,7 +20,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .checks import check_file, load_yaml
+from .checks import load_yaml
 from .extract import extract_any
 from .ocr import build_engine
 from .reference import ReferenceIndex, build_reference_index
@@ -66,59 +66,28 @@ def cmd_ocr(a) -> int:
 
 
 def cmd_check(a) -> int:
-    rules = load_yaml(a.rules)
-    master = load_yaml(a.master) if a.master and os.path.exists(a.master) else {}
-    ref = ReferenceIndex.load(a.reference_index) if a.reference_index and os.path.exists(a.reference_index) else None
-    if a.reference_index and ref is None:
+    from .runner import run_check
+    if a.reference_index and not os.path.exists(a.reference_index):
         print(f"[경고] 기준 문서 색인을 찾을 수 없어 관련 조항 검색을 건너뜁니다: {a.reference_index}")
-    engine = _engine_from_args(a)
     types = [t.strip() for t in a.product_type.split(",")] if a.product_type else None
-    cl_cfg = load_yaml(a.checklist) if a.checklist and os.path.exists(a.checklist) else None
     today = None
     if a.today:
         import datetime as _dt
         today = _dt.date.fromisoformat(a.today)
-
-    out = Path(a.out)
-    out.mkdir(parents=True, exist_ok=True)
-    work = out / "_work"
-    work.mkdir(exist_ok=True)
-
-    results = []
-    for f in a.files:
-        print(f"처리 중: {f}")
-        wd = str(work / Path(f).stem)
-        os.makedirs(wd, exist_ok=True)
-        try:
-            pages = extract_any(f, engine, wd)
-        except Exception as e:
-            print(f"  [오류] {f}: {e}")
-            continue
-        res = check_file(pages, rules, master, ref, product_id=a.product, product_types=types,
-                         checklist_cfg=cl_cfg, today=today)
-        results.append(res)
-        n = sum(1 for x in res.findings if x.status == "review")
-        print(f"  → 검토 필요 {n}건 (페이지 {len(pages)}개)")
-        if res.checklist:
-            from .checklist import summarize
-            sm = summarize(res.checklist)
-            print("  → 점검표 " + " ".join(f"{k}{v}" for k, v in sm.items()))
-
-    if not results:
+    engine = _engine_from_args(a)
+    r = run_check(a.files, a.out, engine, a.rules, a.master, a.checklist, a.reference_index or "",
+                  a.product, types, today, a.keep_work)
+    if not r["ok"]:
         print("처리된 파일이 없습니다.")
         return 1
-
-    img_dir = out / "images"
-    maps = {}
-    for r in results:
-        maps.update(annotate_images(r, str(img_dir)))
-    html_path = write_html(results, str(out), maps)
-    json_path = write_json(results, str(out))
-    xlsx_path = write_xlsx(results, str(out))
-    if not a.keep_work:
-        shutil.rmtree(work, ignore_errors=True)
-    print(f"\n리포트: {html_path}\nJSON  : {json_path}\n엑셀  : {xlsx_path}")
+    p = r["paths"]
+    print(f"\n리포트: {p['html']}\nJSON  : {p['json']}\n엑셀  : {p['xlsx']}")
     return 0
+
+
+def cmd_web(a) -> int:
+    from .webapp import serve
+    return serve(a.host, a.port, a.engine, a.ocr_opts)
 
 
 def main(argv=None) -> int:
@@ -154,6 +123,12 @@ def main(argv=None) -> int:
     p3.add_argument("--keep-work", action="store_true", help="중간 산출물(렌더링 이미지 등) 보존")
     add_ocr_args(p3)
     p3.set_defaults(fn=cmd_check)
+
+    p4 = sub.add_parser("web", help="웹 화면 실행 (PPT/이미지 업로드 검수 + 검수 기준 관리)")
+    p4.add_argument("--host", default="127.0.0.1", help="기본 127.0.0.1(본인 PC만). 사내망 공유 시 0.0.0.0 (인증이 없으니 내부망에서만)")
+    p4.add_argument("--port", type=int, default=8080)
+    add_ocr_args(p4)
+    p4.set_defaults(fn=cmd_web)
 
     a = ap.parse_args(argv)
     return a.fn(a)

@@ -3,3 +3,5 @@ __pycache__/
 _work/
 .pytest_cache/
 output/run*/
+output/web/
+config/history/

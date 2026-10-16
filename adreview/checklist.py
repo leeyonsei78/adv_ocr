@@ -329,7 +329,10 @@ def evaluate_checklist(cfg: dict, pages: list, findings: list, skipped: list, ty
                            sample=spec.get("sample", ""), mark=MAN, mode=mode)
 
         gate, trig = ("yes", None) if t in ("na",) else _gate(spec, ctx, types, types_known)
-        if gate == "no":
+        if spec.get("enabled", True) is False:
+            row.mark, row.mode = NA, "auto"
+            row.detail = "기준 관리에서 비활성화된 항목 (검수 제외)"
+        elif gate == "no":
             row.mark, row.mode = NA, "auto"
             row.detail = spec.get("not_applicable_note") or "적용 조건(상품군·해당 문구)에 해당하지 않아 해당 없음으로 처리"
         elif gate == "unknown" and t in ("elements", "reuse"):

@@ -9,6 +9,7 @@ PyYAML>=6
 pytesseract>=0.3.10
 olefile>=0.46
 openpyxl>=3.1
+Flask>=3.0        # 웹 화면(python -m adreview web)용
 
 # 선택: PaddleOCR (이 PoC 에서 검증한 버전. 모델 파일은 별도 반입 필요)
 # paddlepaddle==3.3.1
