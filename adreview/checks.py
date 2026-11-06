@@ -634,10 +634,13 @@ def check_file(pages: list, rules: dict, master: dict, ref_index=None,
 
     findings.sort(key=lambda f: (f.status != "review", ["high", "medium", "low", "info"].index(f.severity)
                                  if f.severity in ("high", "medium", "low", "info") else 9))
+    from .feedback import apply_to_findings, apply_to_checklist
+    fb_log = apply_to_findings(findings, pages, rules)
     rows = []
     if checklist_cfg:
         from .checklist import evaluate_checklist
         rows = evaluate_checklist(checklist_cfg, pages, findings, skipped, types, types_known, products, today)
+        fb_log += [(a, b) for a, b in apply_to_checklist(rows, pages, rules)]
     return FileResult(file=pages[0].file if pages else "", pages=pages, findings=findings,
                       products=[p["product_id"] for p in products], product_types=sorted(types),
                       skipped_rules=skipped, checklist=rows)
