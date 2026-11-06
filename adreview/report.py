@@ -254,6 +254,10 @@ def write_html(results: list, out_dir: str, image_maps: dict, title: str = "광�
             parts.append(f"<p class='small'>적용 제외 룰: {_esc('; '.join(res.skipped_rules))}</p>")
 
         parts.append(_source_images_html(res, out_dir, image_maps))
+        if getattr(res, 'feedback', None):
+            rows = ''.join('<tr>' + ''.join(f'<td>{_esc(str(c))}</td>' for c in x) + '</tr>' for x in res.feedback)
+            parts.append(f"<details open><summary>준법 의견 반영 내역 ({len(res.feedback)}건)</summary>"
+                         f"<table><tr><th>의견 ID</th><th>대상</th><th>내용</th><th>위치</th></tr>{rows}</table></details>")
 
         if res.checklist:
             parts.append(_checklist_html(res.checklist))
@@ -311,6 +315,7 @@ def write_json(results: list, out_dir: str, criteria: dict = None) -> str:
             "file": r.file, "products": r.products, "product_types": r.product_types,
             "skipped_rules": r.skipped_rules,
             "checklist": [c.to_dict() for c in r.checklist],
+            "feedback": [list(map(str, x)) for x in getattr(r, "feedback", [])],
             "findings": [f.to_dict() for f in r.findings],
             "pages": [{"page": p.page_id, "warnings": p.warnings,
                        "blocks": [b.to_dict() for b in p.blocks]} for p in r.pages],

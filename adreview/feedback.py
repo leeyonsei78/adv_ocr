@@ -61,7 +61,7 @@ def apply_to_findings(findings: list, pages: list, rules: dict) -> list:
                 f.status, f.severity = "info", "info"
                 f.title = f"[준법 의견 반영·허용 표현] {f.title}"
                 f.detail = f"{a['reason']} (의견 {a['id']})  | 원래 사유: {f.detail}"
-                log.append((a["id"], f.rule_id, f.matched_text or f.title, f.page))
+                log.append((a["id"], f.rule_id, f"허용 표현 “{f.matched_text or f.title}” → 참고로 낮춤", f.page))
                 done = True
                 break
         if done:
@@ -71,14 +71,14 @@ def apply_to_findings(findings: list, pages: list, rules: dict) -> list:
             f.status, f.severity = "info", "info"
             f.title = f"[준법 의견 반영·매체 예외] {f.title}"
             f.detail = f"{m['reason']} (의견 {m['id']})  | 원래 사유: {f.detail}"
-            log.append((m["id"], f.rule_id, f.title, f.page))
+            log.append((m["id"], f.rule_id, f"매체 예외 → 참고로 낮춤: {f.title[:40]}", f.page))
             continue
         c = ctx_rules.get(f.rule_id)
         if c:
             f.severity = "low"
             f.title = f"[연결 화면 확인] {f.title}"
             f.detail = f"{c['reason']} (의견 {c['id']})  | 원래 사유: {f.detail}"
-            log.append((c["id"], f.rule_id, f.title, f.page))
+            log.append((c["id"], f.rule_id, f"연결 화면 확인으로 낮춤: {f.title[:40]}", f.page))
     return log
 
 
@@ -92,13 +92,13 @@ def apply_to_checklist(rows: list, pages: list, rules: dict) -> list:
             if r.no in (m.get("items") or []) and r.mark in ("×", "△", "?"):
                 r.detail = f"[매체 예외] {m['reason']} (의견 {m['id']})  | 원래 판정 {r.mark}: {r.detail}"
                 r.mark = "-"
-                log.append((m["id"], r.no))
+                log.append((m["id"], f"점검표 {r.no}", f"{r.title[:24]}: 매체 예외로 해당 없음 처리", "-"))
     for c in context_hits(pages, fb):
         for r in rows:
             if r.no in (c.get("items") or []) and r.mark in ("×", "△"):
                 r.detail = f"[연결 화면 확인] {c['reason']} (의견 {c['id']})  | 원래 판정 {r.mark}: {r.detail}"
                 r.mark = "?"
-                log.append((c["id"], r.no))
+                log.append((c["id"], f"점검표 {r.no}", f"{r.title[:24]}: 연결 화면 확인(?)으로 변경", "-"))
     for r in rows:   # 허용 표현으로 내려간 건은 점검표 prohibited 항목이 이미 info 를 무시하므로 별도 처리 없음
         pass
     return log

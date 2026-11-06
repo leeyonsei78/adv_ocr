@@ -599,7 +599,9 @@ class FileResult:
     products: list
     product_types: list
     skipped_rules: list
-    checklist: list = field(default_factory=list)      # 광고심의점검표 판정 (checklist.ChecklistRow)
+    checklist: list = field(default_factory=list)
+      # 광고심의점검표 판정 (checklist.ChecklistRow)
+    feedback: list = field(default_factory=list)       # 준법 의견 반영 내역 [(의견ID, 대상, 내용, 위치)]
 
 
 def check_file(pages: list, rules: dict, master: dict, ref_index=None,
@@ -640,7 +642,7 @@ def check_file(pages: list, rules: dict, master: dict, ref_index=None,
     if checklist_cfg:
         from .checklist import evaluate_checklist
         rows = evaluate_checklist(checklist_cfg, pages, findings, skipped, types, types_known, products, today)
-        fb_log += [(a, b) for a, b in apply_to_checklist(rows, pages, rules)]
+        fb_log += apply_to_checklist(rows, pages, rules)
     return FileResult(file=pages[0].file if pages else "", pages=pages, findings=findings,
                       products=[p["product_id"] for p in products], product_types=sorted(types),
-                      skipped_rules=skipped, checklist=rows)
+                      skipped_rules=skipped, checklist=rows, feedback=fb_log)
